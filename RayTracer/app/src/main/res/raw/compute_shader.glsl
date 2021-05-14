@@ -2,8 +2,9 @@
 
 //DEBUG_NAME: compute_shader.glsl
 
-// Defining the number of boxes in the scene
+// Defining the number of boxes in the scene //if more than two boxes - edit in trace() needed
 #define BOX_COUNT 2
+
 // Defining the maximum bounds of the scene
 #define MAX_SCENE_BOUNDS 1000.0
 
@@ -28,6 +29,7 @@ uniform mat4 u_InvertedViewMatrix;
 struct box {
     vec3 min;
     vec3 max;
+    vec4 color;
 };
 
 // Ray defined by it's origin and it's direction
@@ -45,11 +47,12 @@ struct hitInfo {
 // Creating an array of boxes
 // Const = can't be changer after being initialized (final in java)
 const box sceneBoxes[BOX_COUNT] = box[BOX_COUNT](
+
 // This will be a ground plate
-box(vec3(-5.0, -0.1, -5.0), vec3(5.0, 0.0, 5.0)),
+box(vec3(-5.0, -0.1, -5.0), vec3(5.0, 0.0, 5.0), vec4( 1, 1, 1,1)),
 
 // This will be a box standing at the center of the ground plate
-box(vec3(-0.5, 0.0, -0.5), vec3(0.5, 1.0, 0.5))
+box(vec3(-0.5, 0.0, -0.5), vec3(0.5, 1.0, 0.5), vec4(0.88, 0.45, 0.55, 1))
 );
 
 // Apperantly glsl works like c, so one has to declare functions like so or put them above the main method
@@ -103,17 +106,25 @@ void main(void) {
 // The function computes the amount of light that a given ray contributes when perceived by the eye
 // So, any ray that will be used as input originates in the eye and goes through the framebuffer texel
 // that is being computed in the current shader invocation
-// ATTENTION: For now this function just traces the given ray into the scene and returns some grayscale if a box was hit
-// or black if nothing was hit
+// If the Box was hit it returns its color
+// If nothing was hit it returns an artificial sky color, depending on the rays directions height
 vec4 trace(ray cameraRay) {
     hitInfo info;
 
+    //calculates boxes
     if(intersectSceneBoxes(cameraRay, info)) {
-        vec4 gray = vec4(float(info.boxIndex) / 10.0 + 0.8);
-        return vec4(gray.rgb, 1.0);
+        if(info.boxIndex == 0) return sceneBoxes[0].color;
+        if(info.boxIndex == 1) return sceneBoxes[1].color;
+        //if(info.boxIndex == x) return sceneBoxes[x].color;
+        return vec4(0,0,0,1); //returns black if not enough returns are specified above
     }
-    return vec4(0.0, 0.0, 0.0, 1.0);
+
+    //calculates sky
+    vec3 unit_direction = normalize(cameraRay.direction);
+    float t = (unit_direction.y + 1.0);
+    return vec4((1.0 - t) * vec3(1,1,1) + t * vec3(0,0,0.6), 1.0); //first variable is for bottom, second for top
 }
+
 
 // The function computes the nearest intersection with a box
 // considering all boxes in the scene
