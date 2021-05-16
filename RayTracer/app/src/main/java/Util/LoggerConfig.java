@@ -6,5 +6,5 @@ package Util;
 
 public class LoggerConfig {
     // When set to true prints detailed shader compilation and linking logs to the console
-    public static final boolean ON = false;
+    public static final boolean ON = true;
 }
