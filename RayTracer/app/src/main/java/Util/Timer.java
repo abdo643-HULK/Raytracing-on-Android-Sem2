@@ -44,7 +44,7 @@ public class Timer {
         }
     }
 
-    // The StateManager automatically updates all registered timers every frame
+    // The GameStateManager automatically updates all registered timers every frame
     public void update() {
         if(running) {
             if (timeLeft > 0.0) {
@@ -57,5 +57,9 @@ public class Timer {
 
     public boolean hasNeverBeenStarted(){
         return neverBeenStarted;
+    }
+
+    public boolean isRunning() {
+        return running;
     }
 }

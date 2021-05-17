@@ -2,9 +2,9 @@
 
 //DEBUG_NAME: compute_shader.glsl
 
-// Defining the number of boxes and spheres in the scene
-//for more edit in trace() is needed
-#define BOX_COUNT 2
+// Defining the number of cubes and spheres in the scene
+// Must match the count numbers in ComputeShaderProgram.java
+#define CUBE_COUNT 2
 #define SPHERE_COUNT 2
 
 // Defining the maximum bounds of the scene
@@ -27,9 +27,19 @@ uniform mat4 u_InvertedViewProjectionMatrix;
 // The inverted view matrix can be used to calculate the proper camera position
 uniform mat4 u_InvertedViewMatrix;
 
+// The cube properties
+uniform vec3 cubeMinArray[CUBE_COUNT];
+uniform vec3 cubeMaxArray[CUBE_COUNT];
+uniform vec3 cubeColorArray[CUBE_COUNT];
+
+// The sphere properties
+uniform vec3 sphereCenterArray[SPHERE_COUNT];
+uniform float sphereRadiusArray[SPHERE_COUNT];
+uniform vec3 sphereColorArray[SPHERE_COUNT];
+
 // ----- STRUCTS -----
-// Axis aligned 3D box defined by it's min corner and max corner coordinates
-struct box {
+// Axis aligned 3D cube defined by it's min corner and max corner coordinates
+struct cube {
     vec3 min;
     vec3 max;
     vec4 color;
@@ -48,46 +58,24 @@ struct ray {
     vec3 direction;
 };
 
-// Intersection hit information defined by hitPosition (the vec2 returned by intersectBox) and boxIndex (the index of the box that was hit)
+// Intersection hit information defined by hitPosition (the vec2 returned by intersectCube) and cubeIndex (the index of the cube that was hit)
 struct hitInfo {
     vec2 hitPosition;
     int arrayIndex;
 };
 
-// ----- SCENE OBJECTS -----
-// Creating an array of boxes
-// Const = can't be changer after being initialized (final in java)
-const box sceneBoxes[BOX_COUNT] = box[BOX_COUNT](
-
-// This is a ground plate
-box(vec3(-5.0, -0.1, -5.0), vec3(5.0, 0.0, 5.0), vec4(0.9, 0.9, 0.9, 1)),
-
-// This is a box standing at the center of the ground plate
-box(vec3(-0.5, 0.0, -0.5), vec3(0.5, 1.0, 0.5), vec4(0.88, 0.45, 0.55, 1))
-);
-
-// Creating an array of spheres
-// Const = can't be changer after being initialized (final in java)
-const sphere sceneSpheres[SPHERE_COUNT] = sphere[SPHERE_COUNT](
-
-// This is a sphere on the left side of the box
-sphere(vec3(1.0, 0.5, 0.0), 0.5, vec4(0.2, 0.7, 0.1, 1)),
-
-// This is a sphere on the right side of the box
-sphere(vec3(-1.0, 0.5, 0.0), 0.5, vec4(0.4, 0.0, 0.4, 1))
-);
-
 // ----- FUNCTION DECLERATIONS -----
 // Apperantly glsl works like c, so one has to declare functions like so or put them above the main method
-vec4 trace(ray cameraRay);
-bool intersectSceneBoxes(ray cameraRay, out hitInfo info);
-vec2 intersectBox(ray cameraRay, const box b);
+vec3 trace(ray cameraRay);
+bool intersectSceneCubes(ray cameraRay, out hitInfo info);
+vec2 intersectCube(ray cameraRay, int i);
 bool intersectSceneSpheres(ray cameraRay, out hitInfo info);
-float intersectSphere(ray cameraRay, const sphere s);
+float intersectSphere(ray cameraRay, int i);
 
 // ----- MAIN -----
 // The main function (shader program entry point)
 void main(void) {
+    // Camera initialization
     vec3 cameraPosition = (u_InvertedViewMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz; // once again assuming w is 1
 
     // The rays are defined as vec4s so that mat4 multiplication and perspective divide (dividing by w component) is possible (Note: these are device coordinates (screen coordinates) with 1 as w)
@@ -124,9 +112,9 @@ void main(void) {
     ray cameraRay;
     cameraRay.origin = cameraPosition;
     cameraRay.direction = direction;
-    vec4 color = trace(cameraRay);
+    vec3 color = trace(cameraRay);
 
-    imageStore(u_FrameBuffer, shaderDomainPosition, color);
+    imageStore(u_FrameBuffer, shaderDomainPosition, vec4(color, 1));
 }
 
 // The function computes the amount of light that a given ray contributes when perceived by the eye
@@ -134,55 +122,47 @@ void main(void) {
 // that is being computed in the current shader invocation
 // If an object was hit it returns its color
 // If nothing was hit it returns an artificial sky color, depending on the rays direction height
-vec4 trace(ray cameraRay) {
-    hitInfo boxHitInfo;
+vec3 trace(ray cameraRay) {
+    hitInfo cubeHitInfo;
     hitInfo sphereHitInfo;
 
     // TODO: this is horrible, make it better
     // it's only necessary because with the previous system
-    // boxes would always be infront of spheres as intersectSceneBoxes()
-    // would return when a box was hit, giving the spheres no chance
+    // cubes would always be infront of spheres as intersectSceneCubes()
+    // would return when a cube was hit, giving the spheres no chance
     // to even calculate whether they were hit or not
-    if(intersectSceneBoxes(cameraRay, boxHitInfo)) {
+    if(intersectSceneCubes(cameraRay, cubeHitInfo)) {
         if(intersectSceneSpheres(cameraRay, sphereHitInfo)) {
-            if(boxHitInfo.hitPosition.x < sphereHitInfo.hitPosition.x) {
-                if (boxHitInfo.arrayIndex == 0) return sceneBoxes[0].color;
-                if (boxHitInfo.arrayIndex == 1) return sceneBoxes[1].color;
-                //if(info.boxIndex == x) return sceneBoxes[x].color;
+            if(cubeHitInfo.hitPosition.x < sphereHitInfo.hitPosition.x) {
+                return cubeColorArray[cubeHitInfo.arrayIndex];
             } else {
-                if (sphereHitInfo.arrayIndex == 0) return sceneSpheres[0].color;
-                if (sphereHitInfo.arrayIndex == 1) return sceneSpheres[1].color;
-                //if(info.arrayIndex == x) return sceneSpheres[x].color;
+                return sphereColorArray[sphereHitInfo.arrayIndex];
             }
         } else {
-            if (boxHitInfo.arrayIndex == 0) return sceneBoxes[0].color;
-            if (boxHitInfo.arrayIndex == 1) return sceneBoxes[1].color;
-            //if(info.boxIndex == x) return sceneBoxes[x].color;
+            return cubeColorArray[cubeHitInfo.arrayIndex];
         }
     } else {
         if(intersectSceneSpheres(cameraRay, sphereHitInfo)) {
-            if (sphereHitInfo.arrayIndex == 0) return sceneSpheres[0].color;
-            if (sphereHitInfo.arrayIndex == 1) return sceneSpheres[1].color;
-            //if(info.arrayIndex == x) return sceneSpheres[x].color;
+            return sphereColorArray[sphereHitInfo.arrayIndex];
         }
     }
 
     // calculates a sky colour if no object intersections were found
     vec3 unit_direction = normalize(cameraRay.direction);
-    return vec4((1.0 - unit_direction.y) * vec3(1,1,1) + unit_direction.y * vec3(0,0,0.6), 1.0); //first vec3 is for bottom, second for top
+    return (1.0 - unit_direction.y) * vec3(1,1,1) + unit_direction.y * vec3(0,0,0.6); //first vec3 is for bottom, second for top
 }
 
 
-// The function computes the nearest intersection with a box
-// considering all boxes in the scene
+// The function computes the nearest intersection with a cube
+// considering all cubes in the scene
 // The hitInfo struct is used to return the information as out parameter (function out, not shader out)
-bool intersectSceneBoxes(ray cameraRay, out hitInfo info) {
-    float closestHitPosition = MAX_SCENE_BOUNDS; // the value of closestHitPosition will be changed when a more close box is hit (determines the closest box -> every single ray has to use it's closest visible box for it's pixel)
+bool intersectSceneCubes(ray cameraRay, out hitInfo info) {
+    float closestHitPosition = MAX_SCENE_BOUNDS; // the value of closestHitPosition will be changed when a more close cube is hit (determines the closest cube -> every single ray has to use it's closest visible cube for it's pixel)
     bool intersectionFound = false;
 
-    for(int i = 0; i < BOX_COUNT; i++) {
-        vec2 hitPosition = intersectBox(cameraRay, sceneBoxes[i]);
-        if(hitPosition.x > 0.0 && hitPosition.x < hitPosition.y && hitPosition.x < closestHitPosition) { // see the last two lines of explanation comment of intersectBox
+    for(int i = 0; i < CUBE_COUNT; i++) {
+        vec2 hitPosition = intersectCube(cameraRay, i);
+        if(hitPosition.x > 0.0 && hitPosition.x < hitPosition.y && hitPosition.x < closestHitPosition) { // see the last two lines of explanation comment of intersectCube
             info.hitPosition = hitPosition;
             info.arrayIndex = i;
             closestHitPosition = hitPosition.x;
@@ -192,20 +172,20 @@ bool intersectSceneBoxes(ray cameraRay, out hitInfo info) {
     return intersectionFound;
 }
 
-// Algorythm to test intersection with axis aligned 3D boxes
+// Algorythm to test intersection with axis aligned 3D cubes
 // The parametric form of a ray is used (origin + (dir * t))
-// The function returns tNear (x) at which the ray enters the box
-// and the tFar (y) at which the ray leaves the box
+// The function returns tNear (x) at which the ray enters the cube
+// and the tFar (y) at which the ray leaves the cube
 // with t being the distance
-// If the ray does not hit the box: tFar will be less than tNear
-// If the box lies behind the ray: tNear will be negative
-vec2 intersectBox(ray cameraRay, const box b) {
-    vec3 tMin = (b.min - cameraRay.origin) / cameraRay.direction; // distance between ray origin and box min
-    vec3 tMax = (b.max - cameraRay.origin) / cameraRay.direction; // distance between ray origin and box max
+// If the ray does not hit the cube: tFar will be less than tNear
+// If the cube lies behind the ray: tNear will be negative
+vec2 intersectCube(ray cameraRay, int i) {
+    vec3 tMin = (cubeMinArray[i] - cameraRay.origin) / cameraRay.direction; // distance between ray origin and cube min
+    vec3 tMax = (cubeMaxArray[i] - cameraRay.origin) / cameraRay.direction; // distance between ray origin and cube max
     vec3 t1 = min(tMin, tMax); // let t1 be the smaller distance
     vec3 t2 = max(tMin, tMax); // let t2 be the bigger distance
-    float tNear = max(max(t1.x, t1.y), t1.z); // calculate where the ray enters the box
-    float tFar = min(min(t2.x, t2.y), t2.z); // calculate where the ray leaves the box
+    float tNear = max(max(t1.x, t1.y), t1.z); // calculate where the ray enters the cube
+    float tFar = min(min(t2.x, t2.y), t2.z); // calculate where the ray leaves the cube
     return vec2(tNear, tFar);
 }
 
@@ -213,11 +193,11 @@ vec2 intersectBox(ray cameraRay, const box b) {
 // considering all spheres in the scene
 // The hitInfo struct is used to return the information as out parameter (function out, not shader out)
 bool intersectSceneSpheres(ray cameraRay, out hitInfo info) {
-    float closestHitPosition = MAX_SCENE_BOUNDS; // the value of closestHitPosition will be changed when a more close box is hit (determines the closest box -> every single ray has to use it's closest visible box for it's pixel)
+    float closestHitPosition = MAX_SCENE_BOUNDS; // the value of closestHitPosition will be changed when a more close cube is hit (determines the closest cube -> every single ray has to use it's closest visible cube for it's pixel)
     bool intersectionFound = false;
 
     for(int i = 0; i < SPHERE_COUNT; i++) {
-        float hitDistance = intersectSphere(cameraRay, sceneSpheres[i]);
+        float hitDistance = intersectSphere(cameraRay, i);
 
         if (hitDistance != -1.0 && hitDistance < closestHitPosition) {
             info.hitPosition = vec2(hitDistance, 0.0); // intersectSphere only calculates the fNear (hitDistance) for now
@@ -234,12 +214,12 @@ bool intersectSceneSpheres(ray cameraRay, out hitInfo info) {
 // The algorithm makes use of the "mitternachtsformel"
 // The function returns the distance from rayOrigin to the hitPoint at which the ray enters the sphere
 // If the ray does not hit the sphere: the discriminant will be negative and -1 will be returned
-float intersectSphere(ray cameraRay, const sphere s) {
-    vec3 toOriginVec = cameraRay.origin - s.center;
+float intersectSphere(ray cameraRay, int i) {
+    vec3 toOriginVec = cameraRay.origin - sphereCenterArray[i];
 
     float a = dot(cameraRay.direction, cameraRay.direction);
     float b = 2.0 * dot(toOriginVec, cameraRay.direction);
-    float c = dot(toOriginVec,toOriginVec) - s.radius*s.radius;
+    float c = dot(toOriginVec,toOriginVec) - sphereRadiusArray[i]*sphereRadiusArray[i];
     float discriminant = (b*b) - (4.0*a*c);
 
     if(discriminant < 0.0){
