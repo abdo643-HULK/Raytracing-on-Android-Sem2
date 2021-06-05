@@ -1,97 +1,118 @@
 package com.example.raytracer;
 
 import android.annotation.SuppressLint;
+import android.graphics.Color;
 import android.opengl.GLSurfaceView;
 import android.os.Bundle;
-import android.view.MotionEvent;
+
+import android.app.Activity;
+import android.app.ActivityManager;
+
+// Zum Abfragen der GL Version hinzugefügt
+import android.content.Context;
+import android.content.pm.ConfigurationInfo;
+
+// Für Logcat
+import android.util.Log;
+import android.util.TypedValue;
+// Um die DPI des Displays zu bekommen
+import android.util.DisplayMetrics;
+
+import android.view.Display;
+import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
+//import android.view.ViewGroup.LayoutParams;
+
+import android.widget.Button;
+
+import androidx.constraintlayout.widget.ConstraintLayout;
+import androidx.constraintlayout.widget.ConstraintSet;
+import androidx.constraintlayout.widget.ConstraintLayout.LayoutParams;
 
 import Util.StateManager;
 
-public class MainActivity extends android.app.Activity {
+// Auf Top level import geändert
+public class MainActivity extends Activity {
 
-    final Renderer renderer = new Renderer(this);
+    private static final String TAG = "Raytracer";
 
-    private GLSurfaceView glSurfaceView;
+    private final float mMinScale = 0.5f;
+    private final float mMaxScale = 2.5f;
+
+    private RaytracerSurfaceView glSurfaceView;
     private boolean rendererSet = false;
+    private float mCurrentScale = 1f;
 
     @SuppressLint("ClickableViewAccessibility")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        glSurfaceView = new GLSurfaceView(this);
 
-        // Request an OPENGL ES 3.1 compatible context
-        glSurfaceView.setEGLContextClientVersion(3);
+        if (!detectOpenGLES31()) {
+            Log.e(TAG, "OpenGL ES 3.1 not supported on device.  Exiting...");
+            finish();
+        }
 
-        // Fullscreen-Mode
-        glSurfaceView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION);
+        final Display display = getWindowManager().getDefaultDisplay();
+        final DisplayMetrics displayMetrics = new DisplayMetrics();
+        display.getMetrics(displayMetrics);
 
-        if(StateManager.isLoaded != true) {
+        glSurfaceView = new RaytracerSurfaceView(this, displayMetrics);
+        rendererSet = true;
+
+        if (!StateManager.isLoaded) {
             StateManager.load(0, this);
         }
 
-        // Assign the renderer
-        glSurfaceView.setRenderer(renderer);
-        rendererSet = true;
+        final ConstraintSet set = new ConstraintSet();
+        final ConstraintLayout cl = new ConstraintLayout(this);
+        cl.setId(View.generateViewId());
 
-        glSurfaceView.setOnTouchListener(new View.OnTouchListener() {
-            // multiple coordinates for multitouch
-            float normalizedX1;
-            float normalizedY1;
-            float normalizedX2;
-            float normalizedY2;
+        final LayoutParams clLP = new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
 
-            @Override
-            public boolean onTouch(View view, MotionEvent motionEvent) {
-                if (motionEvent != null) {
-                    // Convert touch coordinates into normalized device
-                    // coordinates, keeping in mind that Android's
-                    // Y coordinates are inverted
-                    float pointerCount = motionEvent.getPointerCount();
+        cl.setLayoutParams(clLP);
 
-                    if(pointerCount == 1) {
-                        normalizedX1 = (motionEvent.getX() / (float) view.getWidth()) * 2 - 1;
-                        normalizedY1 = -((motionEvent.getY() / (float) view.getHeight()) * 2 - 1);
-                        normalizedX2 = -2;
-                        normalizedY2 = -2;
-                    } else if (pointerCount == 2) {
-                        normalizedX1 = (motionEvent.getX() / (float) view.getWidth()) * 2 - 1;
-                        normalizedY1 = -((motionEvent.getY() / (float) view.getHeight()) * 2 - 1);
-                        normalizedX2 = (motionEvent.getX(1) / (float) view.getWidth()) * 2 - 1;
-                        normalizedY2 = -((motionEvent.getY(1) / (float) view.getHeight()) * 2 - 1);
-                    }
+        final LayoutParams zoomInLP = new LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
 
-                    if (motionEvent.getAction() == MotionEvent.ACTION_DOWN) {
-                        glSurfaceView.queueEvent(new Runnable() {
-                            @Override
-                            public void run() {
-                                renderer.handleTouchPress(normalizedX1, normalizedY1);
-                            }
-                        });
-                    } else if (motionEvent.getAction() == MotionEvent.ACTION_MOVE) {
-                        glSurfaceView.queueEvent(new Runnable() {
-                            @Override
-                            public void run() {
-                                renderer.handleTouchDrag(normalizedX1, normalizedY1, normalizedX2, normalizedY2);
-                            }
-                        });
-                    } else if (motionEvent.getAction() == MotionEvent.ACTION_UP) {
-                        glSurfaceView.queueEvent(new Runnable() {
-                            @Override
-                            public void run() {
-                                renderer.handleTouchRelease(normalizedX1, normalizedY1);
-                            }
-                        });
-                    }
-                    return true;
-                } else {
-                    return false;
-                }
-            }
+        final Button zoomIn = new Button(this);
+        zoomIn.setText("+");
+        zoomIn.setId(View.generateViewId());
+        zoomIn.setLayoutParams(zoomInLP);
+        zoomIn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 50F);
+        zoomIn.setPadding(5, 0, 0, 5);
+        zoomIn.setOnClickListener(v -> {
+            mCurrentScale += 0.5f;
+            mCurrentScale = Math.max(mMinScale, Math.min(mCurrentScale, mMaxScale));
+            glSurfaceView.scale(mCurrentScale);
         });
 
+        final LayoutParams zoomOutLP = new LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        final Button zoomOut = new Button(this);
+        zoomOut.setText("-");
+        zoomOut.setId(View.generateViewId());
+        zoomOut.setLayoutParams(zoomOutLP);
+        zoomOut.setTextSize(TypedValue.COMPLEX_UNIT_SP, 80F);
+        zoomOut.setPadding(0, -80, 0, -40);
+        zoomOut.setOnClickListener(v -> {
+            mCurrentScale -= 0.5f;
+            mCurrentScale = Math.max(mMinScale, Math.min(mCurrentScale, mMaxScale));
+            glSurfaceView.scale(mCurrentScale);
+        });
+
+        cl.addView(zoomIn);
+        cl.addView(zoomOut);
+
+        set.clone(cl);
+        set.connect(zoomIn.getId(), ConstraintSet.END, zoomOut.getId(), ConstraintSet.END, 0);
+        set.connect(zoomIn.getId(), ConstraintSet.BOTTOM, zoomOut.getId(), ConstraintSet.TOP, 0);
+
+        set.connect(zoomOut.getId(), ConstraintSet.BOTTOM, cl.getId(), ConstraintSet.BOTTOM, 50);
+        set.connect(zoomOut.getId(), ConstraintSet.END, cl.getId(), ConstraintSet.END, 40);
+
+        set.applyTo(cl);
         setContentView(glSurfaceView);
+        addContentView(cl, clLP);
     }
 
     @Override
@@ -115,5 +136,11 @@ public class MainActivity extends android.app.Activity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+    }
+
+    private boolean detectOpenGLES31() {
+        ActivityManager am = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        ConfigurationInfo info = am.getDeviceConfigurationInfo();
+        return (info.reqGlEsVersion >= 0x00030001);
     }
 }
