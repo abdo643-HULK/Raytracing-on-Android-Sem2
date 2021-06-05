@@ -29,12 +29,9 @@ public class RaytracerSurfaceView extends GLSurfaceView {
     private final float mThreshold;
     private CurrentEvent mMode = CurrentEvent.NONE;
     // multiple coordinates for multitouch
-    private float mNormalizedX1 = 0;
-    private float mNormalizedY1 = 0;
-    private float mNormalizedX2 = 0;
-    private float mNormalizedY2 = 0;
     private float mScaleFactor = 1f;
     private com.example.raytracer.Renderer mRenderer;
+
     private long mFPS;
     private float mPreviousX;
     private float mPreviousY;
@@ -74,25 +71,7 @@ public class RaytracerSurfaceView extends GLSurfaceView {
             mMode = CurrentEvent.ROTATE;
         }
 
-        //Log.i("Motion",p + " " + pointerCount + " " + m);
-        //Log.i(TAG, "first: " + pointerCount);
-
-        // Convert touch coordinates into normalized device
-        // coordinates, keeping in mind that Android's
-        // Y coordinates are inverted
-        if (pointerCount == 1) {
-            mNormalizedX1 = (e.getX() / (float) getWidth()) * 2 - 1;
-            mNormalizedY1 = -((e.getY() / (float) getHeight()) * 2 - 1);
-            mNormalizedX2 = -2;
-            mNormalizedY2 = -2;
-        } else if (pointerCount == 2) {
-            // Log.i(TAG, "" + pointerCount + " " + e.getX());
-            mNormalizedX1 = (e.getX() / (float) getWidth()) * 2 - 1;
-            mNormalizedY1 = -((e.getY() / (float) getHeight()) * 2 - 1);
-            mNormalizedX2 = (e.getX(1) / (float) getWidth()) * 2 - 1;
-            mNormalizedY2 = -((e.getY(1) / (float) getHeight()) * 2 - 1);
-        }
-
+//        Log.i(TAG, "first: " + pointerCount);
 
         switch (e.getActionMasked()) {
             case MotionEvent.ACTION_DOWN: {
@@ -161,7 +140,7 @@ public class RaytracerSurfaceView extends GLSurfaceView {
             case MotionEvent.ACTION_POINTER_UP: {
                 // Fired when 2 Pointer are on the screen and one gets removed
                 mMode = CurrentEvent.NONE;
-                Log.i(TAG, "Pointer up: " + e.getPointerCount());
+//                Log.i(TAG, "Pointer up: " + e.getPointerCount());
                 break;
             }
             case MotionEvent.ACTION_CANCEL: {
