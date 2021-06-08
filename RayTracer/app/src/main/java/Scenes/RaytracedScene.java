@@ -1,9 +1,6 @@
 package Scenes;
 
 import android.content.Context;
-import android.util.Log;
-
-import androidx.vectordrawable.graphics.drawable.VectorDrawableCompat;
 
 import java.util.ArrayList;
 
@@ -12,10 +9,11 @@ import Objects.Cube;
 import Objects.Sphere;
 import PostProcessingPipeLine.Processing;
 import Programs.ComputeShaderProgram;
-import Util.Geometry;
+import Util.Direction;
 import Util.Geometry.Vector;
 import Util.Geometry.Point;
 import Util.Geometry.Rotation;
+
 import Util.Timer;
 
 import static Util.MatrixHelper.perspectiveM;
@@ -107,6 +105,7 @@ public class RaytracedScene implements Scene {
         // Shader
         computeProgram = new ComputeShaderProgram(context);
 
+
         // PostProcessing
         // There is no need for an actual FBO, just the init() has to be called so that the postToScreen method can be used
         // The postToScreen method creates it's own FBO in the imageRenderer that is used for rendering the scene texture to the screen
@@ -119,14 +118,14 @@ public class RaytracedScene implements Scene {
         glViewport(0, 0, width, height);
 
         // Don't render anything outside the visible window
-        glScissor(0,0, width, height);
+        glScissor(0, 0, width, height);
         glEnable(GL_SCISSOR_TEST);
 
         // Don't render color when using textures with transparency
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
         // Set up a projection matrix
-        perspectiveM(projectionMatrix, 60, (float)width / (float)height, 1f, 20f);
+        perspectiveM(projectionMatrix, 60, (float) width / (float) height, 1f, 20f);
     }
 
     @Override
@@ -142,8 +141,8 @@ public class RaytracedScene implements Scene {
 
         // Move sphere2
         sphere2.setCenter(Vector.add(sphere2.getCenter(), sphere2Speed));
-        if(sphere2Timer.hasNeverBeenStarted() || sphere2Timer.hasFinished()) {
-            if(!sphere2Timer.hasNeverBeenStarted()) {
+        if (sphere2Timer.hasNeverBeenStarted() || sphere2Timer.hasFinished()) {
+            if (!sphere2Timer.hasNeverBeenStarted()) {
                 sphere2Speed = sphere2Speed.scale(-1f);
             }
             sphere2Timer.start();
@@ -162,8 +161,35 @@ public class RaytracedScene implements Scene {
     }
 
     @Override
-    public void handleTouchDrag(float normalizedX, float normalizedY, float normalizedX1, float normalizedY1) {
-        camera.rotate(new Rotation(1f, 0, 1, 0));
+    public void handleScale(float scaleFactor) {
+        camera.scale(scaleFactor);
+    }
+
+    @Override
+    public void handleRotation(float angle, int x, int y) {
+        camera.rotate(new Rotation(angle, x, y, 0));
+    }
+
+    @Override
+    public void handleTouchDrag(Direction direction) {
+        switch (direction) {
+            case UP: {
+                camera.translate(0, -0.08f);
+                break;
+            }
+            case DOWN: {
+                camera.translate(0, 0.08f);
+                break;
+            }
+            case LEFT: {
+                camera.translate(0.08f, 0f);
+                break;
+            }
+            case RIGHT: {
+                camera.translate(-0.08f, 0f);
+                break;
+            }
+        }
     }
 
     @Override
