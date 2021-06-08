@@ -8,7 +8,6 @@ import java.util.ArrayList;
 
 import Objects.Cube;
 import Objects.Sphere;
-import Util.Geometry;
 
 import static android.opengl.GLES20.GL_BLEND;
 import static android.opengl.GLES20.GL_DEPTH_TEST;
@@ -38,8 +37,9 @@ import static android.opengl.GLES31.glMemoryBarrier;
 
 public class ComputeShaderProgram extends ShaderProgram {
 
-    private static final int CUBE_COUNT = 2;
-    private static final int SPHERE_COUNT = 2;
+    // The following constants have to have the same value in the shader
+    private static final int CUBE_COUNT = 3;
+    private static final int SPHERE_COUNT = 3;
 
     // Uniform locations
     private final int uTextureUnitLocation;
@@ -48,9 +48,13 @@ public class ComputeShaderProgram extends ShaderProgram {
     private final int[] uCubeMinArrayLocation;
     private final int[] uCubeMaxArrayLocation;
     private final int[] uCubeColorArrayLocation;
+    private final int[] uCubeMaterialArrayLocation;
+    private final int[] uCubeParameter0ArrayLocation;
     private final int[] uSphereCenterArrayLocation;
     private final int[] uSphereRadiusArrayLocation;
     private final int[] uSphereColorArrayLocation;
+    private final int[] uSphereMaterialArrayLocation;
+    private final int[] uSphereParameter0ArrayLocation;
 
     public ComputeShaderProgram(Context context) {
         super(context, R.raw.compute_shader);
@@ -63,20 +67,28 @@ public class ComputeShaderProgram extends ShaderProgram {
         uCubeMinArrayLocation = new int[CUBE_COUNT];
         uCubeMaxArrayLocation = new int[CUBE_COUNT];
         uCubeColorArrayLocation = new int[CUBE_COUNT];
+        uCubeMaterialArrayLocation = new int[CUBE_COUNT];
+        uCubeParameter0ArrayLocation = new int[CUBE_COUNT];
         uSphereCenterArrayLocation = new int[SPHERE_COUNT];
         uSphereRadiusArrayLocation = new int[SPHERE_COUNT];
         uSphereColorArrayLocation = new int[SPHERE_COUNT];
+        uSphereMaterialArrayLocation = new int[SPHERE_COUNT];
+        uSphereParameter0ArrayLocation = new int[SPHERE_COUNT];
 
         for(int i=0;i<CUBE_COUNT;i++) {
             uCubeMinArrayLocation[i] = glGetUniformLocation(program, "cubeMinArray"+"["+i+"]");
             uCubeMaxArrayLocation[i] = glGetUniformLocation(program, "cubeMaxArray"+"["+i+"]");
             uCubeColorArrayLocation[i] = glGetUniformLocation(program, "cubeColorArray"+"["+i+"]");
+            uCubeMaterialArrayLocation[i] = glGetUniformLocation(program, "cubeMaterialArray"+"["+i+"]");
+            uCubeParameter0ArrayLocation[i] = glGetUniformLocation(program, "cubeParameter0Array"+"["+i+"]");
         }
 
         for(int i=0;i<SPHERE_COUNT;i++) {
             uSphereCenterArrayLocation[i] = glGetUniformLocation(program, "sphereCenterArray"+"["+i+"]");
             uSphereRadiusArrayLocation[i] = glGetUniformLocation(program, "sphereRadiusArray"+"["+i+"]");
             uSphereColorArrayLocation[i] = glGetUniformLocation(program, "sphereColorArray"+"["+i+"]");
+            uSphereMaterialArrayLocation[i] = glGetUniformLocation(program, "sphereMaterialArray"+"["+i+"]");
+            uSphereParameter0ArrayLocation[i] = glGetUniformLocation(program, "sphereParameter0Array"+"["+i+"]");
         }
     }
 
@@ -93,10 +105,18 @@ public class ComputeShaderProgram extends ShaderProgram {
                 glUniform3f(uCubeMinArrayLocation[i], cubeList.get(i).getMin().x, cubeList.get(i).getMin().y, cubeList.get(i).getMin().z);
                 glUniform3f(uCubeMaxArrayLocation[i], cubeList.get(i).getMax().x, cubeList.get(i).getMax().y, cubeList.get(i).getMax().z);
                 glUniform3f(uCubeColorArrayLocation[i], cubeList.get(i).getColor().x, cubeList.get(i).getColor().y, cubeList.get(i).getColor().z);
+                if(cubeList.get(i).getMaterial() == Cube.Material.DIFFUSE) {
+                    glUniform1i(uCubeMaterialArrayLocation[i], 0);
+                } else if(cubeList.get(i).getMaterial() == Cube.Material.METAL) {
+                    glUniform1i(uCubeMaterialArrayLocation[i], 1);
+                }
+                glUniform1f(uCubeParameter0ArrayLocation[i], cubeList.get(i).getParameter0());
             } else {
                 glUniform3f(uCubeMinArrayLocation[i], 0, 0, 0);
                 glUniform3f(uCubeMaxArrayLocation[i], 0, 0, 0);
                 glUniform3f(uCubeColorArrayLocation[i], 0, 0, 0);
+                glUniform1i(uCubeMaterialArrayLocation[i], 0);
+                glUniform1f(uCubeParameter0ArrayLocation[i], 0f);
             }
         }
 
@@ -106,10 +126,18 @@ public class ComputeShaderProgram extends ShaderProgram {
                 glUniform3f(uSphereCenterArrayLocation[i], sphereList.get(i).getCenter().x, sphereList.get(i).getCenter().y, sphereList.get(i).getCenter().z);
                 glUniform1f(uSphereRadiusArrayLocation[i], sphereList.get(i).getRadius());
                 glUniform3f(uSphereColorArrayLocation[i], sphereList.get(i).getColor().x, sphereList.get(i).getColor().y, sphereList.get(i).getColor().z);
+                if(sphereList.get(i).getMaterial() == Sphere.Material.DIFFUSE) {
+                    glUniform1i(uSphereMaterialArrayLocation[i], 0);
+                } else if(sphereList.get(i).getMaterial() == Sphere.Material.METAL) {
+                    glUniform1i(uSphereMaterialArrayLocation[i], 1);
+                }
+                glUniform1f(uSphereParameter0ArrayLocation[i], sphereList.get(i).getParameter0());
             } else {
                 glUniform3f(uSphereCenterArrayLocation[i], 0, 0, 0);
                 glUniform1f(uSphereRadiusArrayLocation[i], 0);
                 glUniform3f(uSphereColorArrayLocation[i], 0, 0, 0);
+                glUniform1i(uSphereMaterialArrayLocation[i], 0);
+                glUniform1f(uSphereParameter0ArrayLocation[i], 0f);
             }
         }
 

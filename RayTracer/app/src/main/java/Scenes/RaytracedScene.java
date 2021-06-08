@@ -12,6 +12,7 @@ import Objects.Cube;
 import Objects.Sphere;
 import PostProcessingPipeLine.Processing;
 import Programs.ComputeShaderProgram;
+import Util.Geometry;
 import Util.Geometry.Vector;
 import Util.Geometry.Point;
 import Util.Geometry.Rotation;
@@ -56,11 +57,13 @@ public class RaytracedScene implements Scene {
     // Cubes
     private Cube cube1;
     private Cube cube2;
+    private Cube cube3;
     private ArrayList<Cube> cubeList;
 
     // Spheres
     private Sphere sphere1;
     private Sphere sphere2;
+    private Sphere sphere3;
     private ArrayList<Sphere> sphereList;
 
     // Timer & Speed
@@ -80,18 +83,22 @@ public class RaytracedScene implements Scene {
         glGenTextures(1, frameBuffer, 0);
 
         // Cubes
-        cube1 = new Cube(new Vector(-5.0f, -0.1f, -5.0f), new Vector(5.0f, 0.0f, 5.0f), new Vector(0.9f, 0.9f, 0.9f));
-        cube2 = new Cube(new Vector(-0.5f, 0.0f, -0.5f), new Vector(0.5f, 1.0f, 0.5f), new Vector(0.88f, 0.45f, 0.55f));
+        cube1 = new Cube(new Vector(-5.0f, -0.1f, -5.0f), new Vector(5.0f, 0.0f, 5.0f), new Vector(0.9f, 0.9f, 0.9f), Cube.Material.DIFFUSE, 0.5f);
+        cube2 = new Cube(new Vector(-0.5f, 0.0f, -0.5f), new Vector(0.5f, 1.0f, 0.5f), new Vector(0.88f, 0.45f, 0.55f), Cube.Material.DIFFUSE, 0.5f);
+        cube3 = new Cube(new Vector(2.0f, 0.0f, -2.0f), new Vector(3.0f, 4.0f, 2.0f), new Vector(0.1f, 0.6f, 0.6f), Cube.Material.METAL, 1.0f);
         cubeList = new ArrayList<>();
         cubeList.add(cube1);
         cubeList.add(cube2);
+        cubeList.add(cube3);
 
         // Spheres
-        sphere1 = new Sphere(new Vector(1.0f, 0.5f, 0.0f), 0.5f, new Vector(0.2f, 0.7f, 0.1f));
-        sphere2 = new Sphere(new Vector(-1.0f, 0.5f, 0.0f), 0.5f, new Vector(0.4f, 0.0f, 0.4f));
+        sphere1 = new Sphere(new Vector(1.0f, 0.5f, 0.0f), 0.5f, new Vector(0.0f, 1.0f, 0.0f), Sphere.Material.METAL, 0.05f);
+        sphere2 = new Sphere(new Vector(-1.0f, 0.5f, 0.0f), 0.5f, new Vector(1.0f, 0.0f, 1.0f), Sphere.Material.METAL, 0.05f);
+        sphere3 = new Sphere(new Vector(-0.5f, 0.75f, -2.0f), 0.75f, new Vector(1.0f, 1.0f, 0.0f), Sphere.Material.DIFFUSE, 0.5f);
         sphereList = new ArrayList<>();
         sphereList.add(sphere1);
         sphereList.add(sphere2);
+        sphereList.add(sphere3);
 
         // Timer & Speed
         sphere2Timer = new Timer(1000);
