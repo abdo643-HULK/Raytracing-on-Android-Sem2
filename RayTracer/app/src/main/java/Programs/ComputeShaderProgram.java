@@ -1,6 +1,7 @@
 package Programs;
 
 import android.content.Context;
+import android.opengl.Matrix;
 
 import com.example.raytracer.R;
 
@@ -43,8 +44,11 @@ public class ComputeShaderProgram extends ShaderProgram {
 
     // Uniform locations
     private final int uTextureUnitLocation;
-    private final int uInvertedViewProjectionMatrixLocation;
-    private final int uInvertedViewMatrixLocation;
+    private final int uCameraPositionLocation;
+    private final int uRay00Location;
+    private final int uRay10Location;
+    private final int uRay01Location;
+    private final int uRay11Location;
     private final int[] uCubeMinArrayLocation;
     private final int[] uCubeMaxArrayLocation;
     private final int[] uCubeColorArrayLocation;
@@ -61,8 +65,11 @@ public class ComputeShaderProgram extends ShaderProgram {
 
         // Retrieve uniform locations for the shader program
         uTextureUnitLocation = glGetUniformLocation(program, U_FRAME_BUFFER);
-        uInvertedViewProjectionMatrixLocation = glGetUniformLocation(program, U_INVERTED_VIEW_PROJECTION_MATRIX);
-        uInvertedViewMatrixLocation = glGetUniformLocation(program, U_INVERTED_VIEW_MATRIX);
+        uCameraPositionLocation = glGetUniformLocation(program, "u_CameraPosition");
+        uRay00Location = glGetUniformLocation(program, "u_Ray00");
+        uRay10Location = glGetUniformLocation(program, "u_Ray10");
+        uRay01Location = glGetUniformLocation(program, "u_Ray01");
+        uRay11Location = glGetUniformLocation(program, "u_Ray11");
 
         uCubeMinArrayLocation = new int[CUBE_COUNT];
         uCubeMaxArrayLocation = new int[CUBE_COUNT];
@@ -93,11 +100,41 @@ public class ComputeShaderProgram extends ShaderProgram {
     }
 
     public void setUniforms(int textureID, int width, int height, float[] invertedViewProjectionMatrix, float[] invertedViewMatrix, ArrayList<Cube> cubeList, ArrayList<Sphere> sphereList) {
-        // Pass the camera position into the shader program
-        glUniformMatrix4fv(uInvertedViewMatrixLocation, 1, false, invertedViewMatrix, 0);
+        // The following camera and ray calculations are done once per frame
+        // If they were in the shader, the would be calculated once per ray (!)
+        // Also having them in the java code means that the cpu can do the calculations
+        // allowing the gpu to free up a bit of performance
+        // (Ray tracing is way more gpu than cpu demanding so this will increase the performance)
 
-        // Pass the inverted view projection matrix into the shader program
-        glUniformMatrix4fv(uInvertedViewProjectionMatrixLocation, 1, false, invertedViewProjectionMatrix, 0);
+        // Initializing the camera
+        float[] cameraPosition = new float[4];
+        Matrix.multiplyMV(cameraPosition, 0, invertedViewMatrix, 0, new float[]{0f, 0f, 0f, 1f}, 0);
+
+        // The four corner rays are defined as vec4s so that mat4 multiplication and perspective divide (dividing by w component) is possible (Note: these are device coordinates (screen coordinates) with 1 as w)
+        float[] ray00 = new float[]{-1, -1, 0, 1};// left, bottom
+        float[] ray10 = new float[]{+1, -1, 0, 1};// right, bottom
+        float[] ray01 = new float[]{-1, +1, 0, 1};// left, top
+        float[] ray11 = new float[]{+1, +1, 0, 1};// right, top
+
+        float[][] rayArray = new float[][]{ray00, ray10, ray01, ray11};
+
+        // From clipping (device/screen) space to world space
+        for(float[] ray : rayArray) {
+            Matrix.multiplyMV(ray, 0, invertedViewProjectionMatrix, 0, ray, 0);
+            ray[0] = (ray[0] / ray[3]) - cameraPosition[0];
+            ray[1] = (ray[1] / ray[3]) - cameraPosition[1];
+            ray[2] = (ray[2] / ray[3]) - cameraPosition[2];
+            ray[3] = 1f;
+        }
+
+        // Pass the camera position into the shader program
+        glUniform3f(uCameraPositionLocation, cameraPosition[0], cameraPosition[1], cameraPosition[2]);
+
+        // Pass the four corner rays into the shader program
+        glUniform3f(uRay00Location, ray00[0], ray00[1], ray00[2]);
+        glUniform3f(uRay10Location, ray10[0], ray10[1], ray10[2]);
+        glUniform3f(uRay01Location, ray01[0], ray01[1], ray01[2]);
+        glUniform3f(uRay11Location, ray11[0], ray11[1], ray11[2]);
 
         // Pass the cubes into the shader program
         for(int i=0;i<CUBE_COUNT;i++) {

@@ -14,6 +14,7 @@ import Util.Geometry.Vector;
 import Util.Geometry.Point;
 import Util.Geometry.Rotation;
 
+import Util.StateManager;
 import Util.Timer;
 
 import static Util.MatrixHelper.perspectiveM;
@@ -34,8 +35,8 @@ import static android.opengl.Matrix.multiplyMM;
 
 public class RaytracedScene implements Scene {
 
-    private static final int FRAMEBUFFER_WIDTH = 1024;
-    private static final int FRAMEBUFFER_HEIGHT = 1024;
+    // Multi Sampling Anti Aliasing (higher = better quality / slower)
+    private static final int MSAA = 2;
 
     // Matrix to create 3D effect and fit to screen
     private final float[] projectionMatrix = new float[16];
@@ -150,7 +151,7 @@ public class RaytracedScene implements Scene {
 
         computeProgram.useProgram();
 
-        computeProgram.setUniforms(frameBuffer[0], FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT, invertedViewProjectionMatrix, invertedViewMatrix, cubeList, sphereList); // width and height must be powers of two
+        computeProgram.setUniforms(frameBuffer[0], StateManager.getWidth(), StateManager.getHeight(), invertedViewProjectionMatrix, invertedViewMatrix, cubeList, sphereList); // width and height must be powers of two
 
         Processing.postToScreen(frameBuffer[0]);
     }

@@ -16,11 +16,8 @@
 // Defining how far the scattered rays can randomly spray (with 0 being no random behaviour at all)
 #define SPRAY_CONTROL 1.0
 
-// Defining how many rays to send out on hit of an object (before being averaged)
-#define RAY_SCATTER_COUNT 1
-
 // Defining how often the scene will be rendered (before being averaged)
-#define MULTI_SAMPLING_COUNT 1
+#define MULTI_SAMPLING_COUNT 2
 
 // Defining the local work group size of the compute shader (must be a power of two)
 layout (local_size_x = 8, local_size_y = 8) in;
@@ -30,14 +27,14 @@ layout (local_size_x = 8, local_size_y = 8) in;
 // This image2D represents the framebuffer that this shader will right to
 layout(rgba32f, binding = 0) uniform highp writeonly image2D u_FrameBuffer;
 
-// With raytracing there is no need to apply projection or view transformation matrices on every object
-// Instead, the four corner rays of the camera's viewing frustum get defined
-// Those can be tested for intersection against scene geometry
-// They however have to use the inverted view projection matrix
-uniform mat4 u_InvertedViewProjectionMatrix;
+// The camera position
+uniform vec3 u_CameraPosition;
 
-// The inverted view matrix can be used to calculate the proper camera position
-uniform mat4 u_InvertedViewMatrix;
+// The four corner rays
+uniform vec3 u_Ray00;
+uniform vec3 u_Ray10;
+uniform vec3 u_Ray01;
+uniform vec3 u_Ray11;
 
 // The cube properties
 uniform vec3 cubeMinArray[CUBE_COUNT];
@@ -60,9 +57,9 @@ struct ray {
     vec3 direction;
 };
 
-// Intersection hit information defined by hitPosition (the vec2 returned by intersectCube) and cubeIndex (the index of the cube that was hit)
+// Intersection hit information of hit objects
 struct hitInfo {
-    int arrayIndex;
+    int arrayIndex;// index of the hit object (can be used to access the uniform arrays)
     float t;// distance from origin to the point where we enter the object
     vec3 p;// point where the object is first hit (enter, not leave)
     vec3 normal;// normal vector on the object
@@ -78,47 +75,22 @@ float intersectSphere(ray cameraRay, int i);
 vec3 getPointFromRay(ray cameraRay, float t);
 vec3 getRandomPoint(vec3 p, int sampleIndex);
 float squaredLength(vec3 p);
-float drand(vec2 co, int sampleIndex);
+float drand(vec2 co);
 
 // ----- MAIN -----
 // The main function (shader program entry point)
 void main(void) {
-    // Camera initialization
-    vec3 cameraPosition = (u_InvertedViewMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;// once again assuming w is 1
-
-    // The rays are defined as vec4s so that mat4 multiplication and perspective divide (dividing by w component) is possible (Note: these are device coordinates (screen coordinates) with 1 as w)
-    vec4 u_Ray00 = vec4(-1, -1, 0, 1);// left, bottom
-    vec4 u_Ray10 = vec4(+1, -1, 0, 1);// right, bottom
-    vec4 u_Ray01 = vec4(-1, +1, 0, 1);// left, top
-    vec4 u_Ray11 = vec4(+1, +1, 0, 1);// right, top
-
-    // From clipping (device/screen) space to world space
-    u_Ray00 = u_InvertedViewProjectionMatrix * u_Ray00;
-    u_Ray00 = vec4(((u_Ray00.xyz / u_Ray00.w) - cameraPosition), 1);
-    u_Ray10 = u_InvertedViewProjectionMatrix * u_Ray10;
-    u_Ray10 = vec4(((u_Ray10.xyz / u_Ray10.w) - cameraPosition), 1);
-    u_Ray01 = u_InvertedViewProjectionMatrix * u_Ray01;
-    u_Ray01 = vec4(((u_Ray01.xyz / u_Ray01.w) - cameraPosition), 1);
-    u_Ray11 = u_InvertedViewProjectionMatrix * u_Ray11;
-    u_Ray11 = vec4(((u_Ray11.xyz / u_Ray11.w) - cameraPosition), 1);
-
-    // TODO: everything up to here is not efficient - it is calculated for every texel instead of once on the cpu (java) and then parsed everytime
-
     ivec2 shaderDomainPosition = ivec2(gl_GlobalInvocationID.xy);
     ivec2 size = imageSize(u_FrameBuffer);
-
-    if (shaderDomainPosition.x >= size.x || shaderDomainPosition.y >= size.y) {
-        return;// exit if the current shader invocation is out of bounds of the framebuffer
-    }
 
     // mix performs a linear interpolation between param 1 and 2 using param 3 as weight
     // therefore we "move" from left to right, and top to bottom through all of the available texels
     // and calculate a direction ray for each of them -> the current shader invocation knows where to shoot the current ray
     vec2 position = vec2(shaderDomainPosition) / vec2(size.x, size.y);
-    vec3 direction = mix(mix(u_Ray00.xyz, u_Ray01.xyz, position.y), mix(u_Ray10.xyz, u_Ray11.xyz, position.y), position.x);
+    vec3 direction = mix(mix(u_Ray00, u_Ray01, position.y), mix(u_Ray10, u_Ray11, position.y), position.x);
 
     ray cameraRay;
-    cameraRay.origin = cameraPosition;
+    cameraRay.origin = u_CameraPosition;
     cameraRay.direction = direction;
 
     vec3 color;
@@ -137,9 +109,6 @@ void main(void) {
 // If an object was hit it returns its color
 // If nothing was hit it returns an artificial sky color, depending on the rays direction height
 vec3 trace(ray cameraRay, int sampleIndex) {
-    hitInfo cubeHitInfo;
-    hitInfo sphereHitInfo;
-
     vec3 color;
     vec3 attenuation = vec3(1.0, 1.0, 1.0);
 
@@ -147,221 +116,113 @@ vec3 trace(ray cameraRay, int sampleIndex) {
 
     float previousParameter0 = -1.0;
 
-    bool hitOnlyMetal = true;
-
     // GLSL doesn't support recursion hence the following for loop is necessary
     for (int bounce = 0; bounce < MAX_BOUNCES; bounce++) {
-        float bufferAttenuation = 0.0;
+        hitInfo cubeHitInfo;
+        hitInfo sphereHitInfo;
 
-        for (int scatter = 0; scatter < RAY_SCATTER_COUNT; scatter++) {
-            hitInfo sphereHitBuffer;
-            hitInfo cubeHitBuffer;
+        cubeHitInfo.t = -1.0;
+        sphereHitInfo.t = -1.0;
 
-            sphereHitBuffer.t = -1.0;
-            cubeHitBuffer.t = -1.0;
+        bool hitSomething = false;
 
-            bool hitSomething = false;
+        if (intersectSceneCubes(scatteredRay, cubeHitInfo)){
+            hitSomething = true;
+        }
 
-            if (intersectSceneSpheres(scatteredRay, sphereHitInfo)){
-                hitSomething = true;
+        if (intersectSceneSpheres(scatteredRay, sphereHitInfo)){
+            hitSomething = true;
+        }
 
-                if (sphereHitInfo.t < sphereHitBuffer.t || sphereHitBuffer.t == -1.0){
-                    sphereHitBuffer = sphereHitInfo;
+        if (hitSomething) {
+            vec3 scatteredPoint;
+
+            if (((cubeHitInfo.t != -1.0 && sphereHitInfo.t != -1.0) && cubeHitInfo.t < sphereHitInfo.t) || (cubeHitInfo.t != -1.0 && sphereHitInfo.t == -1.0)){ //only cube hit or both hit but cube hit is closer
+                //first hit / color
+                if (bounce == 0){
+                    color = cubeColorArray[cubeHitInfo.arrayIndex];
+                    if (cubeMaterialArray[cubeHitInfo.arrayIndex] == 0) {
+                    } else if (cubeMaterialArray[cubeHitInfo.arrayIndex] == 1) { // Metal Material
+                        previousParameter0 = cubeParameter0Array[cubeHitInfo.arrayIndex];
+                    }
+                } else {
+                    if (cubeMaterialArray[cubeHitInfo.arrayIndex] == 0) { // Diffuse Material
+                        if (previousParameter0 != -1.0) {
+                            color = (color * (1.0 - previousParameter0) + cubeColorArray[cubeHitInfo.arrayIndex] * previousParameter0);
+                            attenuation *= 1.0 - cubeParameter0Array[cubeHitInfo.arrayIndex];
+                            previousParameter0 = -1.0;
+                        } else {
+                            attenuation *= cubeParameter0Array[cubeHitInfo.arrayIndex];
+                        }
+                    } else if (cubeMaterialArray[cubeHitInfo.arrayIndex] == 1) { // Metal Material
+                        if (previousParameter0 != -1.0) {
+                            color = (color * (1.0 - previousParameter0) + cubeColorArray[cubeHitInfo.arrayIndex] * previousParameter0);
+                            previousParameter0 *= cubeParameter0Array[cubeHitInfo.arrayIndex];
+                        }
+                    }
+                }
+
+                if (cubeMaterialArray[cubeHitInfo.arrayIndex] == 0) {
+                    scatteredPoint = cubeHitInfo.p + cubeHitInfo.normal + getRandomPoint(cubeHitInfo.p, sampleIndex);
+                    scatteredRay = ray(cubeHitInfo.p, scatteredPoint - cubeHitInfo.p);
+                } else if (cubeMaterialArray[cubeHitInfo.arrayIndex] == 1) {
+                    vec3 incomingDirection = (cubeHitInfo.p - scatteredRay.origin);
+                    vec3 reflectionDirection = incomingDirection - 2.0 * dot(incomingDirection, cubeHitInfo.normal) * cubeHitInfo.normal;
+                    scatteredRay = ray(cubeHitInfo.p, reflectionDirection);
+                }
+            } else if (((cubeHitInfo.t != -1.0 && sphereHitInfo.t != -1.0) && sphereHitInfo.t < cubeHitInfo.t) || (sphereHitInfo.t != -1.0 && cubeHitInfo.t == -1.0)){ //only sphere hit or both hit but sphere hit is closer
+                //first hit / color
+                if (bounce == 0){
+                    color = sphereColorArray[sphereHitInfo.arrayIndex];
+                    if (sphereMaterialArray[sphereHitInfo.arrayIndex] == 0) {
+                    } else if (sphereMaterialArray[sphereHitInfo.arrayIndex] == 1) { // Metal Material
+                        previousParameter0 = sphereParameter0Array[sphereHitInfo.arrayIndex];
+                    }
+                } else {
+                    if (sphereMaterialArray[sphereHitInfo.arrayIndex] == 0) { // Diffuse Material
+                        if (previousParameter0 != -1.0) {
+                            color = (color * (1.0 - previousParameter0) + sphereColorArray[sphereHitInfo.arrayIndex] * previousParameter0);
+                            attenuation *= 1.0 - sphereParameter0Array[sphereHitInfo.arrayIndex];
+                            previousParameter0 = -1.0;
+                        } else {
+                            attenuation *= sphereParameter0Array[sphereHitInfo.arrayIndex];
+                        }
+                    } else if (sphereMaterialArray[sphereHitInfo.arrayIndex] == 1) { // Metal Material
+                        if (previousParameter0 != -1.0) {
+                            color = (color * (1.0 - previousParameter0) + sphereColorArray[sphereHitInfo.arrayIndex] * previousParameter0);
+                            previousParameter0 *= sphereParameter0Array[sphereHitInfo.arrayIndex];
+                        }
+                    }
+                }
+
+                if (sphereMaterialArray[sphereHitInfo.arrayIndex] == 0) {
+                    scatteredPoint = sphereHitInfo.p + sphereHitInfo.normal + getRandomPoint(sphereHitInfo.p, sampleIndex);
+                    scatteredRay = ray(sphereHitInfo.p, scatteredPoint - sphereHitInfo.p);
+                } else if (sphereMaterialArray[sphereHitInfo.arrayIndex] == 1) {
+                    vec3 incomingDirection = (sphereHitInfo.p - scatteredRay.origin);
+                    vec3 reflectionDirection = incomingDirection - 2.0 * dot(incomingDirection, sphereHitInfo.normal) * sphereHitInfo.normal;
+                    scatteredRay = ray(sphereHitInfo.p, reflectionDirection);
                 }
             }
+        } else {
+            vec3 primarySkyColor = vec3(1.0, 1.0, 1.0);
+            vec3 secondarySkyColor = vec3(0.1, 0.5, 0.8);
 
-            if (intersectSceneCubes(scatteredRay, cubeHitInfo)){
-                hitSomething = true;
+            // Sky was hit
+            if (bounce == 0){
+                vec3 unit_direction = normalize(cameraRay.direction);
+                vec3 skyColor = (1.0 - unit_direction.y) * primarySkyColor + unit_direction.y * secondarySkyColor;
 
-                if (cubeHitInfo.t < cubeHitBuffer.t || cubeHitBuffer.t == -1.0){
-                    cubeHitBuffer = cubeHitInfo;
-                }
-            }
+                return skyColor;
+            } else if (previousParameter0 != -1.0) { // Metal was hit before this sky hit
+                vec3 unit_direction = normalize(scatteredRay.direction);
+                vec3 skyColor = (1.0 - unit_direction.y) * primarySkyColor + unit_direction.y * secondarySkyColor;
 
-            if (hitSomething) {
-                vec3 scatteredPoint;
-
-                if (cubeHitBuffer.t > 0.0 && sphereHitBuffer.t > 0.0) { // both a cube and a sphere got hit
-                    if (cubeHitBuffer.t < sphereHitBuffer.t){
-                        //first hit / color
-                        if (bounce == 0){
-                            if (scatter == 0) {
-                                color = cubeColorArray[cubeHitBuffer.arrayIndex];
-                                if (cubeMaterialArray[cubeHitBuffer.arrayIndex] == 0) {
-                                    hitOnlyMetal = false;
-                                } else if (cubeMaterialArray[cubeHitBuffer.arrayIndex] == 1) { // Metal Material
-                                    previousParameter0 = cubeParameter0Array[cubeHitBuffer.arrayIndex];
-                                }
-                            }
-                        } else {
-                            if (cubeMaterialArray[cubeHitBuffer.arrayIndex] == 0) { // Diffuse Material
-                                hitOnlyMetal = false;
-                                if (previousParameter0 != -1.0) {
-                                    color = (color * (1.0 - previousParameter0) + cubeColorArray[cubeHitBuffer.arrayIndex] * previousParameter0);
-                                    bufferAttenuation += 1.0 - cubeParameter0Array[cubeHitBuffer.arrayIndex];
-                                    previousParameter0 = -1.0;
-                                } else {
-                                    bufferAttenuation += cubeParameter0Array[cubeHitBuffer.arrayIndex];
-                                }
-                            } else if (cubeMaterialArray[cubeHitBuffer.arrayIndex] == 1) { // Metal Material
-                                if (previousParameter0 != -1.0) {
-                                    color = (color * (1.0 - previousParameter0) + cubeColorArray[cubeHitBuffer.arrayIndex] * previousParameter0);
-                                    previousParameter0 *= cubeParameter0Array[cubeHitBuffer.arrayIndex];
-                                }
-                            }
-                        }
-
-                        if (cubeMaterialArray[cubeHitBuffer.arrayIndex] == 0) {
-                            scatteredPoint = cubeHitBuffer.p + cubeHitBuffer.normal + getRandomPoint(cubeHitBuffer.p, sampleIndex + scatter);
-                            scatteredRay = ray(cubeHitBuffer.p, scatteredPoint - cubeHitBuffer.p);
-                        } else if (cubeMaterialArray[cubeHitBuffer.arrayIndex] == 1) {
-                            vec3 incomingDirection = (cubeHitBuffer.p - scatteredRay.origin);
-                            vec3 reflectionDirection = incomingDirection - 2.0 * dot(incomingDirection, cubeHitBuffer.normal) * cubeHitBuffer.normal;
-                            scatteredRay = ray(cubeHitBuffer.p, reflectionDirection);
-                        }
-
-                    } else {
-                        //first hit / color
-                        if (bounce == 0){
-                            if (scatter == 0) {
-                                color = sphereColorArray[sphereHitBuffer.arrayIndex];
-                                if (sphereMaterialArray[sphereHitBuffer.arrayIndex] == 0) {
-                                    hitOnlyMetal = false;
-                                } else if (sphereMaterialArray[sphereHitBuffer.arrayIndex] == 1) { // Metal Material
-                                    previousParameter0 = sphereParameter0Array[sphereHitBuffer.arrayIndex];
-                                }
-                            }
-                        } else {
-                            if (sphereMaterialArray[sphereHitBuffer.arrayIndex] == 0) { // Diffuse Material
-                                hitOnlyMetal = false;
-                                if (previousParameter0 != -1.0) {
-                                    color = (color * (1.0 - previousParameter0) + sphereColorArray[sphereHitBuffer.arrayIndex] * previousParameter0);
-                                    bufferAttenuation += 1.0 - sphereParameter0Array[sphereHitBuffer.arrayIndex];
-                                    previousParameter0 = -1.0;
-                                } else {
-                                    bufferAttenuation += sphereParameter0Array[sphereHitBuffer.arrayIndex];
-                                }
-                            } else if (sphereMaterialArray[sphereHitBuffer.arrayIndex] == 1) { // Metal Material
-                                if (previousParameter0 != -1.0) {
-                                    color = (color * (1.0 - previousParameter0) + sphereColorArray[sphereHitBuffer.arrayIndex] * previousParameter0);
-                                    previousParameter0 *= sphereParameter0Array[sphereHitBuffer.arrayIndex];
-                                }
-                            }
-                        }
-
-                        if (sphereMaterialArray[sphereHitBuffer.arrayIndex] == 0) {
-                            scatteredPoint = sphereHitBuffer.p + sphereHitBuffer.normal + getRandomPoint(sphereHitBuffer.p, sampleIndex + scatter);
-                            scatteredRay = ray(sphereHitBuffer.p, scatteredPoint - sphereHitBuffer.p);
-                        } else if (sphereMaterialArray[sphereHitBuffer.arrayIndex] == 1) {
-                            vec3 incomingDirection = (sphereHitBuffer.p - scatteredRay.origin);
-                            vec3 reflectionDirection = incomingDirection - 2.0 * dot(incomingDirection, sphereHitBuffer.normal) * sphereHitBuffer.normal;
-                            scatteredRay = ray(sphereHitBuffer.p, reflectionDirection);
-                        }
-                    }
-                } else if (cubeHitBuffer.t != -1.0){ //only cube hit
-                    //first hit / color
-                    if (bounce == 0){
-                        if (scatter == 0) {
-                            color = cubeColorArray[cubeHitBuffer.arrayIndex];
-                            if(cubeMaterialArray[cubeHitBuffer.arrayIndex] == 0) {
-                                hitOnlyMetal = false;
-                            } else if (cubeMaterialArray[cubeHitBuffer.arrayIndex] == 1) { // Metal Material
-                                previousParameter0 = cubeParameter0Array[cubeHitBuffer.arrayIndex];
-                            }
-                        }
-                    } else {
-                        if (cubeMaterialArray[cubeHitBuffer.arrayIndex] == 0) { // Diffuse Material
-                            hitOnlyMetal = false;
-                            if (previousParameter0 != -1.0) {
-                                color = (color * (1.0 - previousParameter0) + cubeColorArray[cubeHitBuffer.arrayIndex] * previousParameter0);
-                                bufferAttenuation += 1.0 - cubeParameter0Array[cubeHitBuffer.arrayIndex];
-                                previousParameter0 = -1.0;
-                            } else {
-                                bufferAttenuation += cubeParameter0Array[cubeHitBuffer.arrayIndex];
-                            }
-                        } else if (cubeMaterialArray[cubeHitBuffer.arrayIndex] == 1) { // Metal Material
-                            if (previousParameter0 != -1.0) {
-                                color = (color * (1.0 - previousParameter0) + cubeColorArray[cubeHitBuffer.arrayIndex] * previousParameter0);
-                                previousParameter0 *= cubeParameter0Array[cubeHitBuffer.arrayIndex];
-                            }
-                        }
-                    }
-
-                    if (cubeMaterialArray[cubeHitBuffer.arrayIndex] == 0) {
-                        scatteredPoint = cubeHitBuffer.p + cubeHitBuffer.normal + getRandomPoint(cubeHitBuffer.p, sampleIndex + scatter);
-                        scatteredRay = ray(cubeHitBuffer.p, scatteredPoint - cubeHitBuffer.p);
-                    } else if (cubeMaterialArray[cubeHitBuffer.arrayIndex] == 1) {
-                        vec3 incomingDirection = (cubeHitBuffer.p - scatteredRay.origin);
-                        vec3 reflectionDirection = incomingDirection - 2.0 * dot(incomingDirection, cubeHitBuffer.normal) * cubeHitBuffer.normal;
-                        scatteredRay = ray(cubeHitBuffer.p, reflectionDirection);
-                    }
-                } else { //only sphere hit
-                    //first hit / color
-                    if (bounce == 0){
-                        if (scatter == 0) {
-                            color = sphereColorArray[sphereHitBuffer.arrayIndex];
-                            if(sphereMaterialArray[sphereHitBuffer.arrayIndex] == 0) {
-                                hitOnlyMetal = false;
-                            } else if (sphereMaterialArray[sphereHitBuffer.arrayIndex] == 1) { // Metal Material
-                                previousParameter0 = sphereParameter0Array[sphereHitBuffer.arrayIndex];
-                            }
-                        }
-                    } else {
-                        if (sphereMaterialArray[sphereHitBuffer.arrayIndex] == 0) { // Diffuse Material
-                            hitOnlyMetal = false;
-                            if (previousParameter0 != -1.0) {
-                                color = (color * (1.0 - previousParameter0) + sphereColorArray[sphereHitBuffer.arrayIndex] * previousParameter0);
-                                bufferAttenuation += 1.0 - sphereParameter0Array[sphereHitBuffer.arrayIndex];
-                                previousParameter0 = -1.0;
-                            } else {
-                                bufferAttenuation += sphereParameter0Array[sphereHitBuffer.arrayIndex];
-                            }
-                        } else if (sphereMaterialArray[sphereHitBuffer.arrayIndex] == 1) { // Metal Material
-                            if (previousParameter0 != -1.0) {
-                                color = (color * (1.0 - previousParameter0) + sphereColorArray[sphereHitBuffer.arrayIndex] * previousParameter0);
-                                previousParameter0 *= sphereParameter0Array[sphereHitBuffer.arrayIndex];
-                            }
-                        }
-                    }
-
-                    if (sphereMaterialArray[sphereHitBuffer.arrayIndex] == 0) {
-                        scatteredPoint = sphereHitBuffer.p + sphereHitBuffer.normal + getRandomPoint(sphereHitBuffer.p, sampleIndex + scatter);
-                        scatteredRay = ray(sphereHitBuffer.p, scatteredPoint - sphereHitBuffer.p);
-                    } else if (sphereMaterialArray[sphereHitBuffer.arrayIndex] == 1) {
-                        vec3 incomingDirection = (sphereHitBuffer.p - scatteredRay.origin);
-                        vec3 reflectionDirection = incomingDirection - 2.0 * dot(incomingDirection, sphereHitBuffer.normal) * sphereHitBuffer.normal;
-                        scatteredRay = ray(sphereHitBuffer.p, reflectionDirection);
-                    }
-                }
+                color =  (color * (1.0 - previousParameter0) + skyColor * previousParameter0);
             } else {
-                hitOnlyMetal = false;
-                vec3 primarySkyColor = vec3(1.0, 1.0, 1.0);
-                vec3 secondarySkyColor = vec3(0.1, 0.5, 0.8);
-
-                // Sky (can set the skycolour but will defenitely break as there can not be any more ray bounces)
-                if (bounce == 0 && scatter == 0){
-                    vec3 unit_direction = normalize(cameraRay.direction);
-                    vec3 skyColor = (1.0 - unit_direction.y) * primarySkyColor + unit_direction.y * secondarySkyColor;
-
-                    return skyColor;
-                } else if (previousParameter0 != -1.0) {
-                    vec3 unit_direction = normalize(scatteredRay.direction);
-                    vec3 skyColor = (1.0 - unit_direction.y) * primarySkyColor + unit_direction.y * secondarySkyColor;
-
-                    color =  (color * (1.0 - previousParameter0) + skyColor * previousParameter0);
-                }
+                break;
             }
-
-            break;
         }
-
-        if (bufferAttenuation > 0.0) {
-            attenuation *= (bufferAttenuation / float(RAY_SCATTER_COUNT));// calculating the average attenuation of all scattered rays of this bounce
-        }
-    }
-
-    if(hitOnlyMetal) {
-        color = vec3(1.0, 1.0, 1.0);
     }
 
     return color * attenuation;
@@ -371,51 +232,54 @@ vec3 trace(ray cameraRay, int sampleIndex) {
 // considering all cubes in the scene
 // The hitInfo struct is used to return the information as out parameter (function out, not shader out)
 bool intersectSceneCubes(ray cameraRay, out hitInfo info) {
-    float closestHitPosition = MAX_SCENE_BOUNDS;// the value of closestHitPosition will be changed when a more close cube is hit (determines the closest cube -> every single ray has to use it's closest visible cube for it's pixel)
     bool intersectionFound = false;
+    info.t = MAX_SCENE_BOUNDS;// the value of closestHitPosition will be changed when a more close cube is hit (determines the closest cube -> every single ray has to use it's closest visible cube for it's pixel)
 
     for (int i = 0; i < CUBE_COUNT; i++) {
         vec2 hitPosition = intersectCube(cameraRay, i);
-        if (hitPosition.x > 0.0 && hitPosition.x < hitPosition.y && hitPosition.x < closestHitPosition) { // see the last two lines of explanation comment of intersectCube
-            closestHitPosition = hitPosition.x;
+
+        if (hitPosition.x > 0.0 && hitPosition.x < hitPosition.y && hitPosition.x < info.t) { // see the last two lines of explanation comment of intersectCube
             info.arrayIndex = i;
-
             info.t = hitPosition.x;
-            info.p = getPointFromRay(cameraRay, float(info.t));
-
-            // Normal-Calculation
-            vec3 cubeCenter = (cubeMinArray[info.arrayIndex] + cubeMaxArray[info.arrayIndex]) / 2.0;
-            vec3 posHitPoint = getPointFromRay(cameraRay, info.t) - cubeCenter;
-
-            float delta = 0.0001;// to make up for floating point precission errors
-
-            float posXPlane = (cubeMaxArray[info.arrayIndex].x - cubeMinArray[info.arrayIndex].x) / 2.0;
-            if (posHitPoint.x >= posXPlane + delta || posHitPoint.x >= posXPlane - delta) {
-                info.normal = vec3(1.0, 0.0, 0.0);
-            }
-            if (posHitPoint.x <= -posXPlane + delta || posHitPoint.x <= -posXPlane - delta) {
-                info.normal = vec3(-1.0, 0.0, 0.0);
-            }
-
-            float posYPlane = (cubeMaxArray[info.arrayIndex].y - cubeMinArray[info.arrayIndex].y) / 2.0;
-            if (posHitPoint.y >= posYPlane + delta || posHitPoint.y >= posYPlane - delta) {
-                info.normal = vec3(0.0, 1.0, 0.0);
-            }
-            if (posHitPoint.y <= -posYPlane + delta || posHitPoint.y <= -posYPlane - delta) {
-                info.normal = vec3(0.0, -1.0, 0.0);
-            }
-
-            float posZPlane = (cubeMaxArray[info.arrayIndex].z - cubeMinArray[info.arrayIndex].z) / 2.0;
-            if (posHitPoint.z >= posZPlane + delta || posHitPoint.z >= posZPlane - delta) {
-                info.normal = vec3(0.0, 0.0, 1.0);
-            }
-            if (posHitPoint.z <= -posZPlane + delta || posHitPoint.z <= -posZPlane - delta) {
-                info.normal = vec3(0.0, 0.0, -1.0);
-            }
 
             intersectionFound = true;
         }
     }
+
+    if (intersectionFound) {
+        // Normal-Calculation
+        info.p = getPointFromRay(cameraRay, info.t);
+
+        vec3 cubeCenter = (cubeMinArray[info.arrayIndex] + cubeMaxArray[info.arrayIndex]) / 2.0;
+        vec3 posHitPoint = getPointFromRay(cameraRay, info.t) - cubeCenter;
+
+        float delta = 0.0001;// to make up for floating point precission errors
+
+        float posXPlane = (cubeMaxArray[info.arrayIndex].x - cubeMinArray[info.arrayIndex].x) / 2.0;
+        if (posHitPoint.x >= posXPlane + delta || posHitPoint.x >= posXPlane - delta) {
+            info.normal = vec3(1.0, 0.0, 0.0);
+        }
+        if (posHitPoint.x <= -posXPlane + delta || posHitPoint.x <= -posXPlane - delta) {
+            info.normal = vec3(-1.0, 0.0, 0.0);
+        }
+
+        float posYPlane = (cubeMaxArray[info.arrayIndex].y - cubeMinArray[info.arrayIndex].y) / 2.0;
+        if (posHitPoint.y >= posYPlane + delta || posHitPoint.y >= posYPlane - delta) {
+            info.normal = vec3(0.0, 1.0, 0.0);
+        }
+        if (posHitPoint.y <= -posYPlane + delta || posHitPoint.y <= -posYPlane - delta) {
+            info.normal = vec3(0.0, -1.0, 0.0);
+        }
+
+        float posZPlane = (cubeMaxArray[info.arrayIndex].z - cubeMinArray[info.arrayIndex].z) / 2.0;
+        if (posHitPoint.z >= posZPlane + delta || posHitPoint.z >= posZPlane - delta) {
+            info.normal = vec3(0.0, 0.0, 1.0);
+        }
+        if (posHitPoint.z <= -posZPlane + delta || posHitPoint.z <= -posZPlane - delta) {
+            info.normal = vec3(0.0, 0.0, -1.0);
+        }
+    }
+
     return intersectionFound;
 }
 
@@ -441,22 +305,22 @@ vec2 intersectCube(ray cameraRay, int i) {
 // considering all spheres in the scene
 // The hitInfo struct is used to return the information as out parameter (function out, not shader out)
 bool intersectSceneSpheres(ray cameraRay, out hitInfo info) {
-    float closestHitPosition = MAX_SCENE_BOUNDS;// the value of closestHitPosition will be changed when a more close cube is hit (determines the closest cube -> every single ray has to use it's closest visible cube for it's pixel)
+    info.t = MAX_SCENE_BOUNDS;// the value of closestHitPosition will be changed when a more close cube is hit (determines the closest cube -> every single ray has to use it's closest visible cube for it's pixel)
     bool intersectionFound = false;
 
     for (int i = 0; i < SPHERE_COUNT; i++) {
         float hitDistance = intersectSphere(cameraRay, i);
 
-        if (hitDistance > 0.0 && hitDistance < closestHitPosition) {
+        if (hitDistance > 0.0 && hitDistance < info.t) {
             info.arrayIndex = i;
-
             info.t = hitDistance;
-            info.p = getPointFromRay(cameraRay, float(info.t));
-            info.normal = ((info.p - sphereCenterArray[info.arrayIndex]) / sphereRadiusArray[info.arrayIndex]);
-
-            closestHitPosition = hitDistance;
             intersectionFound = true;
         }
+    }
+
+    if (intersectionFound) {
+        info.p = getPointFromRay(cameraRay, float(info.t));
+        info.normal = ((info.p - sphereCenterArray[info.arrayIndex]) / sphereRadiusArray[info.arrayIndex]);
     }
 
     return intersectionFound;
@@ -491,7 +355,7 @@ vec3 getPointFromRay(ray r, float t) {
 //to use instead of drand48 - returns pseudo random
 //returns a float from -1.0 to 1.0
 //relies on the sample index to be truly random from sample to sample
-float drand(vec2 co, int sampleIndex) {
+float drand(vec2 co) {
     float a = 2.0 * fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453) - 1.0;
     float s = a *(6.18278114200511 + a*a *(-38.026124606 + a * a * 53.392573080032137));
     return fract(s * 43758.5453);
@@ -504,20 +368,31 @@ float squaredLength(vec3 p) {
 
 //return random vector with a length < 1; the vector is used as point
 //input p has no direct influence on the output - it is only used in drand()
-//Additionally checks for a lenght^2 smaller than 0.01 to avoid Shadow Acne
 vec3 getRandomPoint(vec3 p, int sampleIndex) {
     do {
-        p = 2.0 * vec3(drand(p.xz, sampleIndex), drand(p.xy, sampleIndex), drand(p.zy, sampleIndex)) - vec3(1, 1, 1);//min -3 max 1
+        p = 2.0 * vec3(drand(p.xz), drand(p.xy), drand(p.zy)) - vec3(1, 1, 1);//min -3 max 1
     } while (squaredLength(p) >= 1.0);
 
-    float perFrameAndSampleRandomizer;
+    float perSampleRandomizer = (drand(p.xz) + drand(p.xy) + drand(p.zy)) / 3.0;
+    float x;
+    float y;
+    float z;
 
     if (sampleIndex > 0) {
-        perFrameAndSampleRandomizer = ((1.0 - (1.0/float(sampleIndex))));// max value = 1.0 || min value = 0.0
-        perFrameAndSampleRandomizer -= 0.5;// max value = 0.5 || min value = -0.5
-    }
+        for (int i = 0; i<sampleIndex; i++) {
+            perSampleRandomizer = drand(vec2(perSampleRandomizer*float(i/sampleIndex), perSampleRandomizer*float(sampleIndex/i)));
 
-    p += vec3(perFrameAndSampleRandomizer, perFrameAndSampleRandomizer, perFrameAndSampleRandomizer);
+            if (i <= sampleIndex / 3 * 1) {
+                x = perSampleRandomizer;
+            } else if (i <= sampleIndex / 3 * 2) {
+                y = perSampleRandomizer;
+            } else if (i <= sampleIndex / 3 * 3) {
+                z = perSampleRandomizer;
+            }
+        }
+
+        p *= vec3(x-0.5, y-0.5, z-0.5);// all values should be random and between -0.5 and +0.5
+    }
 
     p *= SPRAY_CONTROL;
     return p;
