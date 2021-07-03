@@ -17,7 +17,7 @@
 #define SPRAY_CONTROL 1.0
 
 // Defining how often the scene will be rendered (before being averaged)
-#define MULTI_SAMPLING_COUNT 2
+#define MULTI_SAMPLING_COUNT 5
 
 // Defining the local work group size of the compute shader (must be a power of two)
 layout (local_size_x = 8, local_size_y = 8) in;
