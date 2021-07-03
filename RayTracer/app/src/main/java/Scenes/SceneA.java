@@ -33,10 +33,10 @@ import static android.opengl.Matrix.multiplyMM;
  * Created by Andreas on 11.05.2020.
  */
 
-public class RaytracedScene implements Scene {
+public class SceneOne implements Scene {
 
     // Multi Sampling Anti Aliasing (higher = better quality / slower)
-    private static final int MSAA = 2;
+    private static final int MSAA = 1;
 
     // Matrix to create 3D effect and fit to screen
     private final float[] projectionMatrix = new float[16];
@@ -141,6 +141,7 @@ public class RaytracedScene implements Scene {
         invertM(invertedViewMatrix, 0, camera.getViewMatrix(), 0);
 
         // Move sphere2
+        /*
         sphere2.setCenter(Vector.add(sphere2.getCenter(), sphere2Speed));
         if (sphere2Timer.hasNeverBeenStarted() || sphere2Timer.hasFinished()) {
             if (!sphere2Timer.hasNeverBeenStarted()) {
@@ -148,7 +149,7 @@ public class RaytracedScene implements Scene {
             }
             sphere2Timer.start();
         }
-
+*/
         computeProgram.useProgram();
 
         computeProgram.setUniforms(frameBuffer[0], StateManager.getWidth(), StateManager.getHeight(), invertedViewProjectionMatrix, invertedViewMatrix, cubeList, sphereList); // width and height must be powers of two
@@ -175,6 +176,7 @@ public class RaytracedScene implements Scene {
     public void handleTouchDrag(Direction direction) {
         switch (direction) {
             case UP: {
+                StateManager.setActiveSceneIndex(2);
                 camera.translate(0, -0.08f);
                 break;
             }
