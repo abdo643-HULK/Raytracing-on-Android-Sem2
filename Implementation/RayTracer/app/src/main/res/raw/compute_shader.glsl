@@ -5,13 +5,13 @@
 // Defining the number of cubes and spheres in the scene
 // Must match the count numbers in ComputeShaderProgram.java
 #define CUBE_COUNT 3
-#define SPHERE_COUNT 3
+#define SPHERE_COUNT 7
 
 // Defining the maximum bounds of the scene
 #define MAX_SCENE_BOUNDS 1000.0
 
 // Defining the maximum amount of bounces of the ray
-#define MAX_BOUNCES 20
+#define MAX_BOUNCES 10
 
 // Defining how far the scattered rays can randomly spray (with 0 being no random behaviour at all)
 #define SPRAY_CONTROL 1.0

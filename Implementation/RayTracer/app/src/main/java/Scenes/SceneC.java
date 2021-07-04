@@ -33,7 +33,7 @@ import static android.opengl.Matrix.multiplyMM;
  * Created by Andreas on 11.05.2020.
  */
 
-public class SceneTwo implements Scene {
+public class SceneC implements Scene {
 
     // Multi Sampling Anti Aliasing (higher = better quality / slower)
     private static final int MSAA = 1;
@@ -56,13 +56,16 @@ public class SceneTwo implements Scene {
     // Cubes
     private Cube cube1;
     private Cube cube2;
-    private Cube cube3;
     private ArrayList<Cube> cubeList;
 
     // Spheres
     private Sphere sphere1;
     private Sphere sphere2;
     private Sphere sphere3;
+    private Sphere sphere4;
+    private Sphere sphere5;
+    private Sphere sphere6;
+    private Sphere sphere7;
     private ArrayList<Sphere> sphereList;
 
     // Timer & Speed
@@ -81,20 +84,29 @@ public class SceneTwo implements Scene {
         frameBuffer = new int[1];
         glGenTextures(1, frameBuffer, 0);
 
-        // Cubes
-        cube1 = new Cube(new Vector(0.0f, -1.0f, 0.0f), new Vector(4.0f, 0.0f, 4.0f), new Vector(0.9f, 0.9f, 0.9f), Cube.Material.METAL, 0.5f);
-        cube2 = new Cube(new Vector(-1.0f, 0.0f, 0.0f), new Vector(0.0f, 4.0f, 4.0f), new Vector(0.9f, 0.9f, 0.9f), Cube.Material.METAL, 0.5f);
-        cube3 = new Cube(new Vector(0.0f, 0.0f, -1.0f), new Vector(4.0f, 4.0f, 0.0f), new Vector(0.792f, 0.905f, 0.756f), Cube.Material.METAL, 0.5f);
+        // Cubes                        min                                     max                                    color                                        mat              param
+        cube1 = new Cube(new Vector(-5.0f, -0.1f, -3.0f), new Vector(5.0f, 0.0f, 5.0f), new Vector(0.9f, 0.9f, 0.9f), Cube.Material.DIFFUSE, 0.5f);
+        cube2 = new Cube(new Vector(-300.0f,0 -0.0f, -10.0f), new Vector(-450.0f, 50.0f, -50.0f), new Vector(1.0f, 1.0f, 1.0f), Cube.Material.DIFFUSE, 0.7f);
         cubeList = new ArrayList<>();
         cubeList.add(cube1);
-        cubeList.add(cube2);
-        cubeList.add(cube3);
+        //cubeList.add(cube2);
 
-        // Spheres
-        sphere1 = new Sphere(new Vector(1.5f, 1.5f, 1.5f), 0.5f, new Vector(0.5f, 0.02f, 0.01f), Sphere.Material.METAL, 0.05f);
+        // Spheres                      //middle                      //radius              //color
+        sphere1 = new Sphere(new Vector(0.0f, 1.3f, 0.0f), 1.3f, new Vector(0.95f, 0.92f, 0.84f), Sphere.Material.METAL, 0.4f);
+        sphere2 = new Sphere(new Vector(-0.9f, 0.7f, 1.8f), 0.7f, new Vector(0.0f, 0.0f, 0.1f), Sphere.Material.METAL, 0.08f);
+        sphere3 = new Sphere(new Vector(1.7f, 0.3f, 1.0f), 0.3f, new Vector(1.0f, 0.76f, 0.8f), Sphere.Material.METAL, 0.2f);
+        sphere4 = new Sphere(new Vector(2.4f, 0.4f, 1.6f), 0.4f, new Vector(0.29f, 0.55f, 0.23f), Sphere.Material.DIFFUSE, 0.8f);
+        sphere5 = new Sphere(new Vector(1.1f, 0.25f, 4.0f), 0.25f, new Vector(0.8f, 0.02f, 0.1f), Sphere.Material.DIFFUSE, 0.1f);
+        sphere6 = new Sphere(new Vector(0.9f, 0.4f, 2.7f), 0.4f, new Vector(0.28f, 0.5f, 0.7f), Sphere.Material.DIFFUSE, 0.2f);
+        sphere7 = new Sphere(new Vector(2.5f, 0.4f, 4.0f), 0.4f, new Vector(0.5f, 0.02f, 0.01f), Sphere.Material.METAL, 0.09f);
         sphereList = new ArrayList<>();
         sphereList.add(sphere1);
-
+        sphereList.add(sphere2);
+        sphereList.add(sphere3);
+        sphereList.add(sphere4);
+        sphereList.add(sphere5);
+        sphereList.add(sphere6);
+        sphereList.add(sphere7);
 
         // Timer & Speed
         sphere2Timer = new Timer(1000);
@@ -173,7 +185,6 @@ public class SceneTwo implements Scene {
     public void handleTouchDrag(Direction direction) {
         switch (direction) {
             case UP: {
-                StateManager.setActiveSceneIndex(2);
                 camera.translate(0, -0.08f);
                 break;
             }

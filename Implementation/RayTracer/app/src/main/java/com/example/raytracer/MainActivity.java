@@ -62,7 +62,7 @@ public class MainActivity extends Activity {
         rendererSet = true;
 
         if (!StateManager.isLoaded) {
-            StateManager.load(0, this);
+            StateManager.load(3, this); //TODO CHANGE BACK
         }
 
         final ConstraintSet set = new ConstraintSet();

@@ -33,7 +33,7 @@ import static android.opengl.Matrix.multiplyMM;
  * Created by Andreas on 11.05.2020.
  */
 
-public class SceneThree implements Scene {
+public class SceneD implements Scene {
 
     // Multi Sampling Anti Aliasing (higher = better quality / slower)
     private static final int MSAA = 1;
@@ -55,16 +55,12 @@ public class SceneThree implements Scene {
 
     // Cubes
     private Cube cube1;
+    private Cube cube2;
+    private Cube cube3;
     private ArrayList<Cube> cubeList;
 
     // Spheres
     private Sphere sphere1;
-    private Sphere sphere2;
-    private Sphere sphere3;
-    private Sphere sphere4;
-    private Sphere sphere5;
-    private Sphere sphere6;
-    private Sphere sphere7;
     private ArrayList<Sphere> sphereList;
 
     // Timer & Speed
@@ -77,33 +73,25 @@ public class SceneThree implements Scene {
     @Override
     public void onSurfaceCreated(Context context) {
         // Camera
-        camera = new Camera(new Point(3.0f, 2.0f, 7.0f), new Point(0.0f, 0.5f, 0.0f));
+        camera = new Camera(new Point(3.0f, 2.0f, 3.0f), new Point(0.0f, 0.5f, 0.0f));
 
         // FrameBuffer (a texture that the scene will be written to)
         frameBuffer = new int[1];
         glGenTextures(1, frameBuffer, 0);
 
         // Cubes
-        cube1 = new Cube(new Vector(-5.0f, -0.1f, -5.0f), new Vector(5.0f, 0.0f, 5.0f), new Vector(0.9f, 0.9f, 0.9f), Cube.Material.DIFFUSE, 0.5f);
+        cube1 = new Cube(new Vector(-4.0f, 0.0f, -4.0f), new Vector(-4.2f, 4.0f, 4.0f), new Vector(0.0f, 0.0f, 0.0f), Cube.Material.METAL, 1.0f);
+        cube2 = new Cube(new Vector(4.0f, 0.0f, -4.0f), new Vector(4.2f, 4.0f, 4.0f), new Vector(0.0f, 0.0f, 0.0f), Cube.Material.METAL, 1.0f);
+        cube3 = new Cube(new Vector(-4.0f, 0.0f, -4.0f), new Vector(4.0f, -0.1f, 4.0f), new Vector(0.8f, 0.8f, 0.8f), Cube.Material.DIFFUSE, 0.5f);
         cubeList = new ArrayList<>();
         cubeList.add(cube1);
+        cubeList.add(cube2);
+        cubeList.add(cube3);
 
-        // Spheres                      //middle                      //radius              //color
-        sphere1 = new Sphere(new Vector(0.0f, 1.3f, 0.0f), 1.3f, new Vector(0.95f, 0.92f, 0.84f), Sphere.Material.METAL, 0.4f);
-        sphere2 = new Sphere(new Vector(-0.9f, 0.7f, 1.8f), 0.7f, new Vector(0.0f, 0.0f, 0.1f), Sphere.Material.METAL, 0.08f);
-        sphere3 = new Sphere(new Vector(1.7f, 0.3f, 1.0f), 0.3f, new Vector(1.0f, 0.76f, 0.8f), Sphere.Material.METAL, 0.2f);
-        sphere4 = new Sphere(new Vector(2.4f, 0.4f, 1.6f), 0.4f, new Vector(0.29f, 0.55f, 0.23f), Sphere.Material.DIFFUSE, 0.8f);
-        sphere5 = new Sphere(new Vector(1.1f, 0.25f, 4.0f), 0.25f, new Vector(0.8f, 0.02f, 0.1f), Sphere.Material.DIFFUSE, 0.1f);
-        sphere6 = new Sphere(new Vector(0.9f, 0.4f, 2.7f), 0.4f, new Vector(0.28f, 0.5f, 0.7f), Sphere.Material.DIFFUSE, 0.2f);
-        sphere7 = new Sphere(new Vector(2.5f, 0.4f, 4.0f), 0.4f, new Vector(0.5f, 0.02f, 0.01f), Sphere.Material.METAL, 0.09f);
+        // Spheres
+        sphere1 = new Sphere(new Vector(0.0f, 2.5f, 0.0f), 1.0f, new Vector(0.0f, 1.0f, 0.0f), Sphere.Material.METAL, 0.05f);
         sphereList = new ArrayList<>();
         sphereList.add(sphere1);
-        sphereList.add(sphere2);
-        sphereList.add(sphere3);
-        sphereList.add(sphere4);
-        sphereList.add(sphere5);
-        sphereList.add(sphere6);
-        sphereList.add(sphere7);
 
         // Timer & Speed
         sphere2Timer = new Timer(1000);
