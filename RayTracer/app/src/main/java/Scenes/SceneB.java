@@ -33,7 +33,7 @@ import static android.opengl.Matrix.multiplyMM;
  * Created by Andreas on 11.05.2020.
  */
 
-public class SceneTwo implements Scene {
+public class SceneB implements Scene {
 
     // Multi Sampling Anti Aliasing (higher = better quality / slower)
     private static final int MSAA = 1;
@@ -173,7 +173,6 @@ public class SceneTwo implements Scene {
     public void handleTouchDrag(Direction direction) {
         switch (direction) {
             case UP: {
-                StateManager.setActiveSceneIndex(2);
                 camera.translate(0, -0.08f);
                 break;
             }

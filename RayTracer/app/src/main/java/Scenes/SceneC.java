@@ -33,7 +33,7 @@ import static android.opengl.Matrix.multiplyMM;
  * Created by Andreas on 11.05.2020.
  */
 
-public class SceneThree implements Scene {
+public class SceneC implements Scene {
 
     // Multi Sampling Anti Aliasing (higher = better quality / slower)
     private static final int MSAA = 1;
@@ -55,6 +55,7 @@ public class SceneThree implements Scene {
 
     // Cubes
     private Cube cube1;
+    private Cube cube2;
     private ArrayList<Cube> cubeList;
 
     // Spheres
@@ -83,10 +84,12 @@ public class SceneThree implements Scene {
         frameBuffer = new int[1];
         glGenTextures(1, frameBuffer, 0);
 
-        // Cubes
-        cube1 = new Cube(new Vector(-5.0f, -0.1f, -5.0f), new Vector(5.0f, 0.0f, 5.0f), new Vector(0.9f, 0.9f, 0.9f), Cube.Material.DIFFUSE, 0.5f);
+        // Cubes                        min                                     max                                    color                                        mat              param
+        cube1 = new Cube(new Vector(-5.0f, -0.1f, -3.0f), new Vector(5.0f, 0.0f, 5.0f), new Vector(0.9f, 0.9f, 0.9f), Cube.Material.DIFFUSE, 0.5f);
+        cube2 = new Cube(new Vector(-300.0f,0 -0.0f, -10.0f), new Vector(-450.0f, 50.0f, -50.0f), new Vector(1.0f, 1.0f, 1.0f), Cube.Material.DIFFUSE, 0.7f);
         cubeList = new ArrayList<>();
         cubeList.add(cube1);
+        //cubeList.add(cube2);
 
         // Spheres                      //middle                      //radius              //color
         sphere1 = new Sphere(new Vector(0.0f, 1.3f, 0.0f), 1.3f, new Vector(0.95f, 0.92f, 0.84f), Sphere.Material.METAL, 0.4f);

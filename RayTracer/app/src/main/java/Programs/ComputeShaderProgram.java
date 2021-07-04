@@ -40,7 +40,7 @@ public class ComputeShaderProgram extends ShaderProgram {
 
     // The following constants have to have the same value in the shader
     private static final int CUBE_COUNT = 3;
-    private static final int SPHERE_COUNT = 3;
+    private static final int SPHERE_COUNT = 7;
 
     // Uniform locations
     private final int uTextureUnitLocation;

@@ -4,7 +4,10 @@ import android.content.Context;
 
 import java.util.ArrayList;
 import Scenes.Scene;
-import Scenes.RaytracedScene;
+import Scenes.SceneA;
+import Scenes.SceneC;
+import Scenes.SceneB;
+import Scenes.SceneD;
 
 /**
  * Created by Andreas on 11.05.2020.
@@ -32,7 +35,10 @@ public class StateManager {
         context = newContext;
         isLoaded = true;
 
-        sceneList.add(new RaytracedScene());    // 0
+        sceneList.add(new SceneA());    // 0
+        sceneList.add(new SceneB());    // 1
+        sceneList.add(new SceneC());    // 2
+        sceneList.add(new SceneD());    // 3
     }
 
     public static void loadDimensions(int newWidth, int newHeight) {
