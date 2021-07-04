@@ -1,6 +1,7 @@
 package Programs;
 
 import android.content.Context;
+import android.opengl.Matrix;
 
 import com.example.raytracer.R;
 
@@ -8,7 +9,6 @@ import java.util.ArrayList;
 
 import Objects.Cube;
 import Objects.Sphere;
-import Util.Geometry;
 
 import static android.opengl.GLES20.GL_BLEND;
 import static android.opengl.GLES20.GL_DEPTH_TEST;
@@ -38,54 +38,103 @@ import static android.opengl.GLES31.glMemoryBarrier;
 
 public class ComputeShaderProgram extends ShaderProgram {
 
-    private static final int CUBE_COUNT = 2;
-    private static final int SPHERE_COUNT = 2;
+    // The following constants have to have the same value in the shader
+    private static final int CUBE_COUNT = 3;
+    private static final int SPHERE_COUNT = 3;
 
     // Uniform locations
     private final int uTextureUnitLocation;
-    private final int uInvertedViewProjectionMatrixLocation;
-    private final int uInvertedViewMatrixLocation;
+    private final int uCameraPositionLocation;
+    private final int uRay00Location;
+    private final int uRay10Location;
+    private final int uRay01Location;
+    private final int uRay11Location;
     private final int[] uCubeMinArrayLocation;
     private final int[] uCubeMaxArrayLocation;
     private final int[] uCubeColorArrayLocation;
+    private final int[] uCubeMaterialArrayLocation;
+    private final int[] uCubeParameter0ArrayLocation;
     private final int[] uSphereCenterArrayLocation;
     private final int[] uSphereRadiusArrayLocation;
     private final int[] uSphereColorArrayLocation;
+    private final int[] uSphereMaterialArrayLocation;
+    private final int[] uSphereParameter0ArrayLocation;
 
     public ComputeShaderProgram(Context context) {
         super(context, R.raw.compute_shader);
 
         // Retrieve uniform locations for the shader program
         uTextureUnitLocation = glGetUniformLocation(program, U_FRAME_BUFFER);
-        uInvertedViewProjectionMatrixLocation = glGetUniformLocation(program, U_INVERTED_VIEW_PROJECTION_MATRIX);
-        uInvertedViewMatrixLocation = glGetUniformLocation(program, U_INVERTED_VIEW_MATRIX);
+        uCameraPositionLocation = glGetUniformLocation(program, "u_CameraPosition");
+        uRay00Location = glGetUniformLocation(program, "u_Ray00");
+        uRay10Location = glGetUniformLocation(program, "u_Ray10");
+        uRay01Location = glGetUniformLocation(program, "u_Ray01");
+        uRay11Location = glGetUniformLocation(program, "u_Ray11");
 
         uCubeMinArrayLocation = new int[CUBE_COUNT];
         uCubeMaxArrayLocation = new int[CUBE_COUNT];
         uCubeColorArrayLocation = new int[CUBE_COUNT];
+        uCubeMaterialArrayLocation = new int[CUBE_COUNT];
+        uCubeParameter0ArrayLocation = new int[CUBE_COUNT];
         uSphereCenterArrayLocation = new int[SPHERE_COUNT];
         uSphereRadiusArrayLocation = new int[SPHERE_COUNT];
         uSphereColorArrayLocation = new int[SPHERE_COUNT];
+        uSphereMaterialArrayLocation = new int[SPHERE_COUNT];
+        uSphereParameter0ArrayLocation = new int[SPHERE_COUNT];
 
         for(int i=0;i<CUBE_COUNT;i++) {
             uCubeMinArrayLocation[i] = glGetUniformLocation(program, "cubeMinArray"+"["+i+"]");
             uCubeMaxArrayLocation[i] = glGetUniformLocation(program, "cubeMaxArray"+"["+i+"]");
             uCubeColorArrayLocation[i] = glGetUniformLocation(program, "cubeColorArray"+"["+i+"]");
+            uCubeMaterialArrayLocation[i] = glGetUniformLocation(program, "cubeMaterialArray"+"["+i+"]");
+            uCubeParameter0ArrayLocation[i] = glGetUniformLocation(program, "cubeParameter0Array"+"["+i+"]");
         }
 
         for(int i=0;i<SPHERE_COUNT;i++) {
             uSphereCenterArrayLocation[i] = glGetUniformLocation(program, "sphereCenterArray"+"["+i+"]");
             uSphereRadiusArrayLocation[i] = glGetUniformLocation(program, "sphereRadiusArray"+"["+i+"]");
             uSphereColorArrayLocation[i] = glGetUniformLocation(program, "sphereColorArray"+"["+i+"]");
+            uSphereMaterialArrayLocation[i] = glGetUniformLocation(program, "sphereMaterialArray"+"["+i+"]");
+            uSphereParameter0ArrayLocation[i] = glGetUniformLocation(program, "sphereParameter0Array"+"["+i+"]");
         }
     }
 
     public void setUniforms(int textureID, int width, int height, float[] invertedViewProjectionMatrix, float[] invertedViewMatrix, ArrayList<Cube> cubeList, ArrayList<Sphere> sphereList) {
-        // Pass the camera position into the shader program
-        glUniformMatrix4fv(uInvertedViewMatrixLocation, 1, false, invertedViewMatrix, 0);
+        // The following camera and ray calculations are done once per frame
+        // If they were in the shader, the would be calculated once per ray (!)
+        // Also having them in the java code means that the cpu can do the calculations
+        // allowing the gpu to free up a bit of performance
+        // (Ray tracing is way more gpu than cpu demanding so this will increase the performance)
 
-        // Pass the inverted view projection matrix into the shader program
-        glUniformMatrix4fv(uInvertedViewProjectionMatrixLocation, 1, false, invertedViewProjectionMatrix, 0);
+        // Initializing the camera
+        float[] cameraPosition = new float[4];
+        Matrix.multiplyMV(cameraPosition, 0, invertedViewMatrix, 0, new float[]{0f, 0f, 0f, 1f}, 0);
+
+        // The four corner rays are defined as vec4s so that mat4 multiplication and perspective divide (dividing by w component) is possible (Note: these are device coordinates (screen coordinates) with 1 as w)
+        float[] ray00 = new float[]{-1, -1, 0, 1};// left, bottom
+        float[] ray10 = new float[]{+1, -1, 0, 1};// right, bottom
+        float[] ray01 = new float[]{-1, +1, 0, 1};// left, top
+        float[] ray11 = new float[]{+1, +1, 0, 1};// right, top
+
+        float[][] rayArray = new float[][]{ray00, ray10, ray01, ray11};
+
+        // From clipping (device/screen) space to world space
+        for(float[] ray : rayArray) {
+            Matrix.multiplyMV(ray, 0, invertedViewProjectionMatrix, 0, ray, 0);
+            ray[0] = (ray[0] / ray[3]) - cameraPosition[0];
+            ray[1] = (ray[1] / ray[3]) - cameraPosition[1];
+            ray[2] = (ray[2] / ray[3]) - cameraPosition[2];
+            ray[3] = 1f;
+        }
+
+        // Pass the camera position into the shader program
+        glUniform3f(uCameraPositionLocation, cameraPosition[0], cameraPosition[1], cameraPosition[2]);
+
+        // Pass the four corner rays into the shader program
+        glUniform3f(uRay00Location, ray00[0], ray00[1], ray00[2]);
+        glUniform3f(uRay10Location, ray10[0], ray10[1], ray10[2]);
+        glUniform3f(uRay01Location, ray01[0], ray01[1], ray01[2]);
+        glUniform3f(uRay11Location, ray11[0], ray11[1], ray11[2]);
 
         // Pass the cubes into the shader program
         for(int i=0;i<CUBE_COUNT;i++) {
@@ -93,10 +142,18 @@ public class ComputeShaderProgram extends ShaderProgram {
                 glUniform3f(uCubeMinArrayLocation[i], cubeList.get(i).getMin().x, cubeList.get(i).getMin().y, cubeList.get(i).getMin().z);
                 glUniform3f(uCubeMaxArrayLocation[i], cubeList.get(i).getMax().x, cubeList.get(i).getMax().y, cubeList.get(i).getMax().z);
                 glUniform3f(uCubeColorArrayLocation[i], cubeList.get(i).getColor().x, cubeList.get(i).getColor().y, cubeList.get(i).getColor().z);
+                if(cubeList.get(i).getMaterial() == Cube.Material.DIFFUSE) {
+                    glUniform1i(uCubeMaterialArrayLocation[i], 0);
+                } else if(cubeList.get(i).getMaterial() == Cube.Material.METAL) {
+                    glUniform1i(uCubeMaterialArrayLocation[i], 1);
+                }
+                glUniform1f(uCubeParameter0ArrayLocation[i], cubeList.get(i).getParameter0());
             } else {
                 glUniform3f(uCubeMinArrayLocation[i], 0, 0, 0);
                 glUniform3f(uCubeMaxArrayLocation[i], 0, 0, 0);
                 glUniform3f(uCubeColorArrayLocation[i], 0, 0, 0);
+                glUniform1i(uCubeMaterialArrayLocation[i], 0);
+                glUniform1f(uCubeParameter0ArrayLocation[i], 0f);
             }
         }
 
@@ -106,10 +163,18 @@ public class ComputeShaderProgram extends ShaderProgram {
                 glUniform3f(uSphereCenterArrayLocation[i], sphereList.get(i).getCenter().x, sphereList.get(i).getCenter().y, sphereList.get(i).getCenter().z);
                 glUniform1f(uSphereRadiusArrayLocation[i], sphereList.get(i).getRadius());
                 glUniform3f(uSphereColorArrayLocation[i], sphereList.get(i).getColor().x, sphereList.get(i).getColor().y, sphereList.get(i).getColor().z);
+                if(sphereList.get(i).getMaterial() == Sphere.Material.DIFFUSE) {
+                    glUniform1i(uSphereMaterialArrayLocation[i], 0);
+                } else if(sphereList.get(i).getMaterial() == Sphere.Material.METAL) {
+                    glUniform1i(uSphereMaterialArrayLocation[i], 1);
+                }
+                glUniform1f(uSphereParameter0ArrayLocation[i], sphereList.get(i).getParameter0());
             } else {
                 glUniform3f(uSphereCenterArrayLocation[i], 0, 0, 0);
                 glUniform1f(uSphereRadiusArrayLocation[i], 0);
                 glUniform3f(uSphereColorArrayLocation[i], 0, 0, 0);
+                glUniform1i(uSphereMaterialArrayLocation[i], 0);
+                glUniform1f(uSphereParameter0ArrayLocation[i], 0f);
             }
         }
 
