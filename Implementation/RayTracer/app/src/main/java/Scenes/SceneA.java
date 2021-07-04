@@ -92,7 +92,7 @@ public class SceneA implements Scene {
 
         // Spheres
         sphere1 = new Sphere(new Vector(1.0f, 0.5f, 0.0f), 0.5f, new Vector(0.0f, 1.0f, 0.0f), Sphere.Material.METAL, 0.05f);
-        sphere2 = new Sphere(new Vector(-1.0f, 0.5f, 0.0f), 0.5f, new Vector(1.0f, 0.0f, 1.0f), Sphere.Material.METAL, 0.05f);
+        sphere2 = new Sphere(new Vector(-1.0f, 0.5f, 0.0f), 0.5f, new Vector(1.0f, 0.0f, 1.0f), Sphere.Material.METAL, 1.0f);
         sphere3 = new Sphere(new Vector(-0.5f, 0.75f, -2.0f), 0.75f, new Vector(1.0f, 1.0f, 0.0f), Sphere.Material.DIFFUSE, 0.5f);
         sphereList = new ArrayList<>();
         sphereList.add(sphere1);
